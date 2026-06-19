@@ -6,6 +6,12 @@ import { usePartsStore, useMasterDataStore } from "@/stores";
 import type { MocList, MocPart, MocStatus } from "@/types";
 import { MOC_STATUS_OPTIONS } from "@/types";
 
+function getImageUrl(path?: string) {
+  if (!path) return "";
+  if (path.startsWith("data:") || path.startsWith("file://")) return path;
+  return `file://${path}`;
+}
+
 const props = defineProps<{
   modelValue: boolean;
   moc: MocList | null;
@@ -14,7 +20,9 @@ const props = defineProps<{
 const emit = defineEmits<{
   "update:modelValue": [value: boolean];
   save: [
-    data: Omit<MocList, "id" | "createdAt" | "updatedAt">
+    data: Omit<MocList, "id" | "createdAt" | "updatedAt"> & {
+      coverRemoved?: boolean;
+    }
   ];
 }>();
 
@@ -23,6 +31,7 @@ const masterDataStore = useMasterDataStore();
 
 const formRef = ref<FormInstance>();
 const coverImageInput = ref<HTMLInputElement>();
+const originalCoverPath = ref<string | undefined>(undefined);
 const formData = ref({
   name: "",
   description: "",
@@ -39,6 +48,17 @@ const searchKeyword = ref("");
 const availableParts = ref<{ part: typeof partsStore.parts[0]; quantity: number }[]>([]);
 
 const dialogTitle = computed(() => (props.moc ? "编辑 MOC 清单" : "新建 MOC 清单"));
+
+const coverImagePreviewUrl = computed(() => {
+  if (formData.value.coverImage) {
+    return getImageUrl(formData.value.coverImage);
+  }
+  return getImageUrl(originalCoverPath.value);
+});
+
+const hasCoverImage = computed(() => {
+  return !!(formData.value.coverImage || originalCoverPath.value);
+});
 
 const visible = computed({
   get: () => props.modelValue,
@@ -117,6 +137,7 @@ function handleCoverImageChange(e: Event) {
 
 function handleRemoveCoverImage() {
   formData.value.coverImage = undefined;
+  originalCoverPath.value = undefined;
 }
 
 function resetForm() {
@@ -126,6 +147,7 @@ function resetForm() {
     coverImage: undefined,
     status: "planning",
   };
+  originalCoverPath.value = undefined;
   mocParts.value = [];
   searchKeyword.value = "";
   formRef.value?.resetFields();
@@ -141,17 +163,26 @@ async function handleSubmit() {
         return;
       }
 
+      const coverImagePath = formData.value.coverImage?.includes(",")
+        ? formData.value.coverImage.split(",")[1]
+        : formData.value.coverImage;
+
+      const coverRemoved = !!props.moc && !coverImagePath && !originalCoverPath.value;
+
       emit("save", {
         name: formData.value.name.trim(),
         description: formData.value.description.trim() || undefined,
-        coverImagePath: formData.value.coverImage,
+        coverImagePath,
         status: props.moc ? formData.value.status : "planning",
         parts: mocParts.value.map((p) => ({
           ...p,
           inStock: 0,
           isMissing: false,
         })),
+        coverRemoved,
       });
+
+      visible.value = false;
     }
   });
 }
@@ -164,9 +195,10 @@ watch(
         formData.value = {
           name: props.moc.name,
           description: props.moc.description || "",
-          coverImage: props.moc.coverImagePath,
+          coverImage: undefined,
           status: props.moc.status,
         };
+        originalCoverPath.value = props.moc.coverImagePath;
         mocParts.value = [...props.moc.parts];
       } else {
         resetForm();
@@ -206,8 +238,8 @@ onMounted(() => {
           @click="handleCoverImageClick"
         >
           <img
-            v-if="formData.coverImage"
-            :src="formData.coverImage"
+            v-if="hasCoverImage"
+            :src="coverImagePreviewUrl"
             alt="封面图片"
             class="cover-image"
           />
@@ -216,7 +248,7 @@ onMounted(() => {
             <p class="upload-text">点击上传封面</p>
           </template>
           <button
-            v-if="formData.coverImage"
+            v-if="hasCoverImage"
             class="remove-cover-btn"
             @click.stop="handleRemoveCoverImage"
           >

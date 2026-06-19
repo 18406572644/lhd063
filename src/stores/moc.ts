@@ -19,7 +19,8 @@ export const useMocStore = defineStore("moc", () => {
 
   const totalMissingParts = computed(() => {
     return mocLists.value.reduce((sum, moc) => {
-      return sum + moc.parts.filter((p) => p.isMissing).length;
+      const parts = moc.parts ?? [];
+      return sum + parts.filter((p) => p.isMissing).length;
     }, 0);
   });
 

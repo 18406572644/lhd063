@@ -45,8 +45,13 @@ const statusRemark = ref("");
 const statusLogsVisible = ref(false);
 const statusLogsMoc = ref<MocList | null>(null);
 const coverDialogVisible = ref(false);
-const coverImageMoc = ref<MocList | null>(null);
+const coverImageMocId = ref<string | null>(null);
 const coverImageInput = ref<HTMLInputElement | null>(null);
+
+const coverImageMoc = computed(() => {
+  if (!coverImageMocId.value) return null;
+  return mocStore.mocLists.find((m) => m.id === coverImageMocId.value) ?? null;
+});
 
 const filteredMocs = computed(() => {
   let result = mocStore.mocLists;
@@ -138,29 +143,42 @@ async function handleViewDetail(moc: MocList) {
   }
 }
 
-async function handleDialogSave(mocData: Omit<MocList, "id" | "createdAt" | "updatedAt">) {
+async function handleDialogSave(
+  mocData: Omit<MocList, "id" | "createdAt" | "updatedAt"> & {
+    coverRemoved?: boolean;
+  }
+) {
   let savedMoc: MocList;
-  if (editingMoc.value) {
-    savedMoc = await mocStore.updateMocList({
-      ...editingMoc.value,
-      ...mocData,
-    });
-    appStore.showSuccess("更新成功");
-  } else {
-    savedMoc = await mocStore.addMocList(mocData);
-    appStore.showSuccess("创建成功");
-  }
-
-  if (mocData.coverImagePath && savedMoc) {
-    appStore.startLoading("正在上传封面...");
-    try {
-      await mocStore.saveMocCoverImage(savedMoc.id, mocData.coverImagePath);
-    } finally {
-      appStore.stopLoading();
+  try {
+    if (editingMoc.value) {
+      savedMoc = await mocStore.updateMocList({
+        ...editingMoc.value,
+        ...mocData,
+      });
+      appStore.showSuccess("更新成功");
+    } else {
+      savedMoc = await mocStore.addMocList(mocData);
+      appStore.showSuccess("创建成功");
     }
-  }
 
-  dialogVisible.value = false;
+    if (mocData.coverImagePath) {
+      appStore.startLoading("正在上传封面...");
+      try {
+        await mocStore.saveMocCoverImage(savedMoc.id, mocData.coverImagePath);
+      } finally {
+        appStore.stopLoading();
+      }
+    } else if (mocData.coverRemoved && savedMoc) {
+      appStore.startLoading("正在删除封面...");
+      try {
+        await mocStore.deleteMocCoverImage(savedMoc.id);
+      } finally {
+        appStore.stopLoading();
+      }
+    }
+  } finally {
+    dialogVisible.value = false;
+  }
 }
 
 function openStatusChange(moc: MocList) {
@@ -199,7 +217,7 @@ async function openStatusLogs(moc: MocList) {
 }
 
 function openCoverDialog(moc: MocList) {
-  coverImageMoc.value = moc;
+  coverImageMocId.value = moc.id;
   coverDialogVisible.value = true;
 }
 
@@ -261,7 +279,7 @@ async function handleDeleteCover() {
 }
 
 function getMissingCount(moc: MocList) {
-  return moc.parts.filter((p) => p.isMissing).length;
+  return (moc.parts ?? []).filter((p) => p.isMissing).length;
 }
 
 function getColorHex(colorName: string) {
