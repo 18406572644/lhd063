@@ -251,3 +251,139 @@ pub struct ImportResult {
     pub imported: i32,
     pub errors: Vec<String>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PartForCreate {
+    pub name: String,
+    pub part_number: String,
+    pub r#type: String,
+    pub color: String,
+    pub size: String,
+    pub quantity: i32,
+    pub location: String,
+    pub description: Option<String>,
+    pub image_path: Option<String>,
+}
+
+impl PartForCreate {
+    pub fn into_part(self) -> Part {
+        let now: DateTime<Utc> = Utc::now();
+        Part {
+            id: Uuid::new_v4().to_string(),
+            name: self.name,
+            part_number: self.part_number,
+            r#type: self.r#type,
+            color: self.color,
+            size: self.size,
+            quantity: self.quantity,
+            location: self.location,
+            description: self.description,
+            image_path: self.image_path,
+            created_at: now.to_rfc3339(),
+            updated_at: now.to_rfc3339(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PartTypeForCreate {
+    pub name: String,
+    pub code: String,
+    pub description: Option<String>,
+}
+
+impl PartTypeForCreate {
+    pub fn into_type(self) -> PartType {
+        PartType {
+            id: Uuid::new_v4().to_string(),
+            name: self.name,
+            code: self.code,
+            description: self.description,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PartColorForCreate {
+    pub name: String,
+    pub hex: String,
+    pub lego_code: Option<String>,
+}
+
+impl PartColorForCreate {
+    pub fn into_color(self) -> PartColor {
+        PartColor {
+            id: Uuid::new_v4().to_string(),
+            name: self.name,
+            hex: self.hex,
+            lego_code: self.lego_code,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PartSizeForCreate {
+    pub name: String,
+    pub width: f64,
+    pub height: f64,
+    pub unit: String,
+}
+
+impl PartSizeForCreate {
+    pub fn into_size(self) -> PartSize {
+        PartSize {
+            id: Uuid::new_v4().to_string(),
+            name: self.name,
+            width: self.width,
+            height: self.height,
+            unit: self.unit,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LocationForCreate {
+    pub name: String,
+    pub code: String,
+    pub description: Option<String>,
+    pub parent_id: Option<String>,
+}
+
+impl LocationForCreate {
+    pub fn into_location(self) -> Location {
+        Location {
+            id: Uuid::new_v4().to_string(),
+            name: self.name,
+            code: self.code,
+            description: self.description,
+            parent_id: self.parent_id,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MocListForCreate {
+    pub name: String,
+    pub description: Option<String>,
+    pub parts: Vec<MocPart>,
+}
+
+impl MocListForCreate {
+    pub fn into_moc_list(self) -> MocList {
+        let now: DateTime<Utc> = Utc::now();
+        MocList {
+            id: Uuid::new_v4().to_string(),
+            name: self.name,
+            description: self.description,
+            parts: self.parts,
+            created_at: now.to_rfc3339(),
+            updated_at: now.to_rfc3339(),
+        }
+    }
+}

@@ -44,9 +44,9 @@ pub async fn get_part_by_id(
 #[tauri::command]
 pub async fn create_part(
     db: State<'_, Database>,
-    part: Part,
+    part: PartForCreate,
 ) -> Result<Part, String> {
-    db.create_part(&part)
+    db.create_part(part)
 }
 
 #[tauri::command]
@@ -73,9 +73,9 @@ pub async fn get_part_types(db: State<'_, Database>) -> Result<Vec<PartType>, St
 #[tauri::command]
 pub async fn create_part_type(
     db: State<'_, Database>,
-    r#type: PartType,
+    r#type: PartTypeForCreate,
 ) -> Result<PartType, String> {
-    db.create_part_type(&r#type)
+    db.create_part_type(r#type)
 }
 
 #[tauri::command]
@@ -102,9 +102,9 @@ pub async fn get_part_colors(db: State<'_, Database>) -> Result<Vec<PartColor>, 
 #[tauri::command]
 pub async fn create_part_color(
     db: State<'_, Database>,
-    color: PartColor,
+    color: PartColorForCreate,
 ) -> Result<PartColor, String> {
-    db.create_part_color(&color)
+    db.create_part_color(color)
 }
 
 #[tauri::command]
@@ -131,9 +131,9 @@ pub async fn get_part_sizes(db: State<'_, Database>) -> Result<Vec<PartSize>, St
 #[tauri::command]
 pub async fn create_part_size(
     db: State<'_, Database>,
-    size: PartSize,
+    size: PartSizeForCreate,
 ) -> Result<PartSize, String> {
-    db.create_part_size(&size)
+    db.create_part_size(size)
 }
 
 #[tauri::command]
@@ -160,9 +160,9 @@ pub async fn get_locations(db: State<'_, Database>) -> Result<Vec<Location>, Str
 #[tauri::command]
 pub async fn create_location(
     db: State<'_, Database>,
-    location: Location,
+    location: LocationForCreate,
 ) -> Result<Location, String> {
-    db.create_location(&location)
+    db.create_location(location)
 }
 
 #[tauri::command]
@@ -197,9 +197,9 @@ pub async fn get_moc_list_by_id(
 #[tauri::command]
 pub async fn create_moc_list(
     db: State<'_, Database>,
-    moc: MocList,
+    moc: MocListForCreate,
 ) -> Result<MocList, String> {
-    db.create_moc_list(&moc)
+    db.create_moc_list(moc)
 }
 
 #[tauri::command]

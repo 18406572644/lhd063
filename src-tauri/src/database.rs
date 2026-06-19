@@ -450,9 +450,11 @@ impl Database {
         }))
     }
 
-    pub fn create_part(&self, part: &Part) -> Result<Part, String> {
+    pub fn create_part(&self, input: PartForCreate) -> Result<Part, String> {
         let conn_guard = self.get_conn()?;
         let conn = conn_guard.as_ref().unwrap();
+
+        let part = input.into_part();
 
         let encrypted_name = self
             .crypto
@@ -489,7 +491,7 @@ impl Database {
         )
         .map_err(|e| format!("Failed to insert part: {}", e))?;
 
-        Ok(part.clone())
+        Ok(part)
     }
 
     pub fn update_part(&self, part: &Part) -> Result<Part, String> {
@@ -579,9 +581,11 @@ impl Database {
         Ok(types)
     }
 
-    pub fn create_part_type(&self, part_type: &PartType) -> Result<PartType, String> {
+    pub fn create_part_type(&self, input: PartTypeForCreate) -> Result<PartType, String> {
         let conn_guard = self.get_conn()?;
         let conn = conn_guard.as_ref().unwrap();
+
+        let part_type = input.into_type();
 
         conn.execute(
             "INSERT INTO part_types (id, name, code, description) VALUES (?1, ?2, ?3, ?4)",
@@ -589,7 +593,7 @@ impl Database {
         )
         .map_err(|e| format!("Failed to insert part type: {}", e))?;
 
-        Ok(part_type.clone())
+        Ok(part_type)
     }
 
     pub fn update_part_type(&self, part_type: &PartType) -> Result<PartType, String> {
@@ -642,9 +646,11 @@ impl Database {
         Ok(colors)
     }
 
-    pub fn create_part_color(&self, color: &PartColor) -> Result<PartColor, String> {
+    pub fn create_part_color(&self, input: PartColorForCreate) -> Result<PartColor, String> {
         let conn_guard = self.get_conn()?;
         let conn = conn_guard.as_ref().unwrap();
+
+        let color = input.into_color();
 
         conn.execute(
             "INSERT INTO part_colors (id, name, hex, lego_code) VALUES (?1, ?2, ?3, ?4)",
@@ -652,7 +658,7 @@ impl Database {
         )
         .map_err(|e| format!("Failed to insert part color: {}", e))?;
 
-        Ok(color.clone())
+        Ok(color)
     }
 
     pub fn update_part_color(&self, color: &PartColor) -> Result<PartColor, String> {
@@ -706,9 +712,11 @@ impl Database {
         Ok(sizes)
     }
 
-    pub fn create_part_size(&self, size: &PartSize) -> Result<PartSize, String> {
+    pub fn create_part_size(&self, input: PartSizeForCreate) -> Result<PartSize, String> {
         let conn_guard = self.get_conn()?;
         let conn = conn_guard.as_ref().unwrap();
+
+        let size = input.into_size();
 
         conn.execute(
             "INSERT INTO part_sizes (id, name, width, height, unit) VALUES (?1, ?2, ?3, ?4, ?5)",
@@ -716,7 +724,7 @@ impl Database {
         )
         .map_err(|e| format!("Failed to insert part size: {}", e))?;
 
-        Ok(size.clone())
+        Ok(size)
     }
 
     pub fn update_part_size(&self, size: &PartSize) -> Result<PartSize, String> {
@@ -770,9 +778,11 @@ impl Database {
         Ok(locations)
     }
 
-    pub fn create_location(&self, location: &Location) -> Result<Location, String> {
+    pub fn create_location(&self, input: LocationForCreate) -> Result<Location, String> {
         let conn_guard = self.get_conn()?;
         let conn = conn_guard.as_ref().unwrap();
+
+        let location = input.into_location();
 
         conn.execute(
             "INSERT INTO locations (id, name, code, description, parent_id) VALUES (?1, ?2, ?3, ?4, ?5)",
@@ -780,7 +790,7 @@ impl Database {
         )
         .map_err(|e| format!("Failed to insert location: {}", e))?;
 
-        Ok(location.clone())
+        Ok(location)
     }
 
     pub fn update_location(&self, location: &Location) -> Result<Location, String> {
@@ -909,9 +919,11 @@ impl Database {
         }))
     }
 
-    pub fn create_moc_list(&self, moc: &MocList) -> Result<MocList, String> {
+    pub fn create_moc_list(&self, input: MocListForCreate) -> Result<MocList, String> {
         let mut conn_guard = self.get_conn()?;
         let conn = conn_guard.as_mut().unwrap();
+
+        let moc = input.into_moc_list();
 
         let tx = conn
             .transaction()
@@ -943,7 +955,7 @@ impl Database {
         tx.commit()
             .map_err(|e| format!("Failed to commit transaction: {}", e))?;
 
-        Ok(moc.clone())
+        Ok(moc)
     }
 
     pub fn update_moc_list(&self, moc: &MocList) -> Result<MocList, String> {
@@ -1291,19 +1303,19 @@ impl Database {
                 continue;
             }
 
-            let part = Part::new(
-                import_part.name.clone(),
-                import_part.part_number.clone(),
-                import_part.r#type.clone(),
-                import_part.color.clone(),
-                import_part.size.clone(),
-                import_part.quantity,
-                import_part.location.clone(),
-                import_part.description.clone(),
-                None,
-            );
+            let part_for_create = PartForCreate {
+                name: import_part.name.clone(),
+                part_number: import_part.part_number.clone(),
+                r#type: import_part.r#type.clone(),
+                color: import_part.color.clone(),
+                size: import_part.size.clone(),
+                quantity: import_part.quantity,
+                location: import_part.location.clone(),
+                description: import_part.description.clone(),
+                image_path: None,
+            };
 
-            match self.create_part(&part) {
+            match self.create_part(part_for_create) {
                 Ok(_) => imported += 1,
                 Err(e) => errors.push(format!("Row {}: {}", index + 1, e)),
             }
