@@ -450,7 +450,7 @@ onMounted(() => {
     z-index: 1;
 
     &:hover {
-      background: darken($color-danger, 10%);
+      filter: brightness(0.9);
     }
   }
 
