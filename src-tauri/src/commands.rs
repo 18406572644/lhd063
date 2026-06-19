@@ -306,3 +306,11 @@ pub async fn delete_moc_cover_image(
 ) -> Result<(), String> {
     db.delete_moc_cover_image(&moc_id)
 }
+
+#[tauri::command]
+pub async fn get_operation_logs(
+    db: State<'_, Database>,
+    filter: Option<OperationLogFilter>,
+) -> Result<Vec<OperationLog>, String> {
+    db.get_operation_logs(filter)
+}

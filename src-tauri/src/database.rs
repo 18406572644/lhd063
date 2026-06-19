@@ -162,6 +162,21 @@ impl Database {
             );
 
             CREATE INDEX IF NOT EXISTS idx_moc_status_logs_moc_id ON moc_status_logs(moc_id);
+
+            CREATE TABLE IF NOT EXISTS operation_logs (
+                id TEXT PRIMARY KEY,
+                operation_type TEXT NOT NULL,
+                object_type TEXT NOT NULL,
+                object_id TEXT NOT NULL,
+                object_name TEXT,
+                before_snapshot TEXT,
+                after_snapshot TEXT,
+                changed_at TEXT NOT NULL
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_operation_logs_object ON operation_logs(object_type, object_id);
+            CREATE INDEX IF NOT EXISTS idx_operation_logs_type ON operation_logs(operation_type);
+            CREATE INDEX IF NOT EXISTS idx_operation_logs_changed_at ON operation_logs(changed_at DESC);
             ",
         )
         .map_err(|e| format!("Failed to create tables: {}", e))?;
@@ -538,12 +553,26 @@ impl Database {
         )
         .map_err(|e| format!("Failed to insert part: {}", e))?;
 
+        let after_snapshot = serde_json::to_string(&part)
+            .map_err(|e| format!("Failed to serialize after snapshot: {}", e))?;
+        self.insert_operation_log(
+            conn,
+            OperationType::Create,
+            ObjectType::Part,
+            &part.id,
+            Some(&part.name),
+            None,
+            Some(&after_snapshot),
+        )?;
+
         Ok(part)
     }
 
     pub fn update_part(&self, part: &Part) -> Result<Part, String> {
         let conn_guard = self.get_conn()?;
         let conn = conn_guard.as_ref().unwrap();
+
+        let old_part = self.get_part_by_id(&part.id)?;
 
         let mut part = part.clone();
         part.update_timestamp();
@@ -581,12 +610,30 @@ impl Database {
         )
         .map_err(|e| format!("Failed to update part: {}", e))?;
 
+        if let Some(old) = old_part {
+            let before_snapshot = serde_json::to_string(&old)
+                .map_err(|e| format!("Failed to serialize before snapshot: {}", e))?;
+            let after_snapshot = serde_json::to_string(&part)
+                .map_err(|e| format!("Failed to serialize after snapshot: {}", e))?;
+            self.insert_operation_log(
+                conn,
+                OperationType::Update,
+                ObjectType::Part,
+                &part.id,
+                Some(&part.name),
+                Some(&before_snapshot),
+                Some(&after_snapshot),
+            )?;
+        }
+
         Ok(part)
     }
 
     pub fn delete_part(&self, id: &str) -> Result<(), String> {
         let conn_guard = self.get_conn()?;
         let conn = conn_guard.as_ref().unwrap();
+
+        let old_part = self.get_part_by_id(id)?;
 
         if let Some(app_dir) = self.app_data_dir.lock().unwrap().as_ref() {
             let image_path = app_dir.join("images").join(format!("{}.jpg", id));
@@ -597,6 +644,20 @@ impl Database {
 
         conn.execute("DELETE FROM parts WHERE id = ?1", params![id])
             .map_err(|e| format!("Failed to delete part: {}", e))?;
+
+        if let Some(old) = old_part {
+            let before_snapshot = serde_json::to_string(&old)
+                .map_err(|e| format!("Failed to serialize before snapshot: {}", e))?;
+            self.insert_operation_log(
+                conn,
+                OperationType::Delete,
+                ObjectType::Part,
+                id,
+                Some(&old.name),
+                Some(&before_snapshot),
+                None,
+            )?;
+        }
 
         Ok(())
     }
@@ -640,6 +701,18 @@ impl Database {
         )
         .map_err(|e| format!("Failed to insert part type: {}", e))?;
 
+        let after_snapshot = serde_json::to_string(&part_type)
+            .map_err(|e| format!("Failed to serialize after snapshot: {}", e))?;
+        self.insert_operation_log(
+            conn,
+            OperationType::Create,
+            ObjectType::PartType,
+            &part_type.id,
+            Some(&part_type.name),
+            None,
+            Some(&after_snapshot),
+        )?;
+
         Ok(part_type)
     }
 
@@ -647,11 +720,43 @@ impl Database {
         let conn_guard = self.get_conn()?;
         let conn = conn_guard.as_ref().unwrap();
 
+        let old = conn
+            .query_row(
+                "SELECT id, name, code, description FROM part_types WHERE id = ?1",
+                params![part_type.id],
+                |row| {
+                    Ok(PartType {
+                        id: row.get(0)?,
+                        name: row.get(1)?,
+                        code: row.get(2)?,
+                        description: row.get(3)?,
+                    })
+                },
+            )
+            .optional()
+            .map_err(|e| format!("Failed to query old part type: {}", e))?;
+
         conn.execute(
             "UPDATE part_types SET name = ?1, code = ?2, description = ?3 WHERE id = ?4",
             params![part_type.name, part_type.code, part_type.description, part_type.id],
         )
         .map_err(|e| format!("Failed to update part type: {}", e))?;
+
+        if let Some(old_val) = old {
+            let before_snapshot = serde_json::to_string(&old_val)
+                .map_err(|e| format!("Failed to serialize before snapshot: {}", e))?;
+            let after_snapshot = serde_json::to_string(&part_type)
+                .map_err(|e| format!("Failed to serialize after snapshot: {}", e))?;
+            self.insert_operation_log(
+                conn,
+                OperationType::Update,
+                ObjectType::PartType,
+                &part_type.id,
+                Some(&part_type.name),
+                Some(&before_snapshot),
+                Some(&after_snapshot),
+            )?;
+        }
 
         Ok(part_type.clone())
     }
@@ -660,8 +765,38 @@ impl Database {
         let conn_guard = self.get_conn()?;
         let conn = conn_guard.as_ref().unwrap();
 
+        let old = conn
+            .query_row(
+                "SELECT id, name, code, description FROM part_types WHERE id = ?1",
+                params![id],
+                |row| {
+                    Ok(PartType {
+                        id: row.get(0)?,
+                        name: row.get(1)?,
+                        code: row.get(2)?,
+                        description: row.get(3)?,
+                    })
+                },
+            )
+            .optional()
+            .map_err(|e| format!("Failed to query old part type: {}", e))?;
+
         conn.execute("DELETE FROM part_types WHERE id = ?1", params![id])
             .map_err(|e| format!("Failed to delete part type: {}", e))?;
+
+        if let Some(old_val) = old {
+            let before_snapshot = serde_json::to_string(&old_val)
+                .map_err(|e| format!("Failed to serialize before snapshot: {}", e))?;
+            self.insert_operation_log(
+                conn,
+                OperationType::Delete,
+                ObjectType::PartType,
+                id,
+                Some(&old_val.name),
+                Some(&before_snapshot),
+                None,
+            )?;
+        }
 
         Ok(())
     }
@@ -705,6 +840,18 @@ impl Database {
         )
         .map_err(|e| format!("Failed to insert part color: {}", e))?;
 
+        let after_snapshot = serde_json::to_string(&color)
+            .map_err(|e| format!("Failed to serialize after snapshot: {}", e))?;
+        self.insert_operation_log(
+            conn,
+            OperationType::Create,
+            ObjectType::PartColor,
+            &color.id,
+            Some(&color.name),
+            None,
+            Some(&after_snapshot),
+        )?;
+
         Ok(color)
     }
 
@@ -712,11 +859,43 @@ impl Database {
         let conn_guard = self.get_conn()?;
         let conn = conn_guard.as_ref().unwrap();
 
+        let old = conn
+            .query_row(
+                "SELECT id, name, hex, lego_code FROM part_colors WHERE id = ?1",
+                params![color.id],
+                |row| {
+                    Ok(PartColor {
+                        id: row.get(0)?,
+                        name: row.get(1)?,
+                        hex: row.get(2)?,
+                        lego_code: row.get(3)?,
+                    })
+                },
+            )
+            .optional()
+            .map_err(|e| format!("Failed to query old part color: {}", e))?;
+
         conn.execute(
             "UPDATE part_colors SET name = ?1, hex = ?2, lego_code = ?3 WHERE id = ?4",
             params![color.name, color.hex, color.lego_code, color.id],
         )
         .map_err(|e| format!("Failed to update part color: {}", e))?;
+
+        if let Some(old_val) = old {
+            let before_snapshot = serde_json::to_string(&old_val)
+                .map_err(|e| format!("Failed to serialize before snapshot: {}", e))?;
+            let after_snapshot = serde_json::to_string(&color)
+                .map_err(|e| format!("Failed to serialize after snapshot: {}", e))?;
+            self.insert_operation_log(
+                conn,
+                OperationType::Update,
+                ObjectType::PartColor,
+                &color.id,
+                Some(&color.name),
+                Some(&before_snapshot),
+                Some(&after_snapshot),
+            )?;
+        }
 
         Ok(color.clone())
     }
@@ -725,8 +904,38 @@ impl Database {
         let conn_guard = self.get_conn()?;
         let conn = conn_guard.as_ref().unwrap();
 
+        let old = conn
+            .query_row(
+                "SELECT id, name, hex, lego_code FROM part_colors WHERE id = ?1",
+                params![id],
+                |row| {
+                    Ok(PartColor {
+                        id: row.get(0)?,
+                        name: row.get(1)?,
+                        hex: row.get(2)?,
+                        lego_code: row.get(3)?,
+                    })
+                },
+            )
+            .optional()
+            .map_err(|e| format!("Failed to query old part color: {}", e))?;
+
         conn.execute("DELETE FROM part_colors WHERE id = ?1", params![id])
             .map_err(|e| format!("Failed to delete part color: {}", e))?;
+
+        if let Some(old_val) = old {
+            let before_snapshot = serde_json::to_string(&old_val)
+                .map_err(|e| format!("Failed to serialize before snapshot: {}", e))?;
+            self.insert_operation_log(
+                conn,
+                OperationType::Delete,
+                ObjectType::PartColor,
+                id,
+                Some(&old_val.name),
+                Some(&before_snapshot),
+                None,
+            )?;
+        }
 
         Ok(())
     }
@@ -771,6 +980,18 @@ impl Database {
         )
         .map_err(|e| format!("Failed to insert part size: {}", e))?;
 
+        let after_snapshot = serde_json::to_string(&size)
+            .map_err(|e| format!("Failed to serialize after snapshot: {}", e))?;
+        self.insert_operation_log(
+            conn,
+            OperationType::Create,
+            ObjectType::PartSize,
+            &size.id,
+            Some(&size.name),
+            None,
+            Some(&after_snapshot),
+        )?;
+
         Ok(size)
     }
 
@@ -778,11 +999,44 @@ impl Database {
         let conn_guard = self.get_conn()?;
         let conn = conn_guard.as_ref().unwrap();
 
+        let old = conn
+            .query_row(
+                "SELECT id, name, width, height, unit FROM part_sizes WHERE id = ?1",
+                params![size.id],
+                |row| {
+                    Ok(PartSize {
+                        id: row.get(0)?,
+                        name: row.get(1)?,
+                        width: row.get(2)?,
+                        height: row.get(3)?,
+                        unit: row.get(4)?,
+                    })
+                },
+            )
+            .optional()
+            .map_err(|e| format!("Failed to query old part size: {}", e))?;
+
         conn.execute(
             "UPDATE part_sizes SET name = ?1, width = ?2, height = ?3, unit = ?4 WHERE id = ?5",
             params![size.name, size.width, size.height, size.unit, size.id],
         )
         .map_err(|e| format!("Failed to update part size: {}", e))?;
+
+        if let Some(old_val) = old {
+            let before_snapshot = serde_json::to_string(&old_val)
+                .map_err(|e| format!("Failed to serialize before snapshot: {}", e))?;
+            let after_snapshot = serde_json::to_string(&size)
+                .map_err(|e| format!("Failed to serialize after snapshot: {}", e))?;
+            self.insert_operation_log(
+                conn,
+                OperationType::Update,
+                ObjectType::PartSize,
+                &size.id,
+                Some(&size.name),
+                Some(&before_snapshot),
+                Some(&after_snapshot),
+            )?;
+        }
 
         Ok(size.clone())
     }
@@ -791,8 +1045,39 @@ impl Database {
         let conn_guard = self.get_conn()?;
         let conn = conn_guard.as_ref().unwrap();
 
+        let old = conn
+            .query_row(
+                "SELECT id, name, width, height, unit FROM part_sizes WHERE id = ?1",
+                params![id],
+                |row| {
+                    Ok(PartSize {
+                        id: row.get(0)?,
+                        name: row.get(1)?,
+                        width: row.get(2)?,
+                        height: row.get(3)?,
+                        unit: row.get(4)?,
+                    })
+                },
+            )
+            .optional()
+            .map_err(|e| format!("Failed to query old part size: {}", e))?;
+
         conn.execute("DELETE FROM part_sizes WHERE id = ?1", params![id])
             .map_err(|e| format!("Failed to delete part size: {}", e))?;
+
+        if let Some(old_val) = old {
+            let before_snapshot = serde_json::to_string(&old_val)
+                .map_err(|e| format!("Failed to serialize before snapshot: {}", e))?;
+            self.insert_operation_log(
+                conn,
+                OperationType::Delete,
+                ObjectType::PartSize,
+                id,
+                Some(&old_val.name),
+                Some(&before_snapshot),
+                None,
+            )?;
+        }
 
         Ok(())
     }
@@ -837,6 +1122,18 @@ impl Database {
         )
         .map_err(|e| format!("Failed to insert location: {}", e))?;
 
+        let after_snapshot = serde_json::to_string(&location)
+            .map_err(|e| format!("Failed to serialize after snapshot: {}", e))?;
+        self.insert_operation_log(
+            conn,
+            OperationType::Create,
+            ObjectType::Location,
+            &location.id,
+            Some(&location.name),
+            None,
+            Some(&after_snapshot),
+        )?;
+
         Ok(location)
     }
 
@@ -844,11 +1141,44 @@ impl Database {
         let conn_guard = self.get_conn()?;
         let conn = conn_guard.as_ref().unwrap();
 
+        let old = conn
+            .query_row(
+                "SELECT id, name, code, description, parent_id FROM locations WHERE id = ?1",
+                params![location.id],
+                |row| {
+                    Ok(Location {
+                        id: row.get(0)?,
+                        name: row.get(1)?,
+                        code: row.get(2)?,
+                        description: row.get(3)?,
+                        parent_id: row.get(4)?,
+                    })
+                },
+            )
+            .optional()
+            .map_err(|e| format!("Failed to query old location: {}", e))?;
+
         conn.execute(
             "UPDATE locations SET name = ?1, code = ?2, description = ?3, parent_id = ?4 WHERE id = ?5",
             params![location.name, location.code, location.description, location.parent_id, location.id],
         )
         .map_err(|e| format!("Failed to update location: {}", e))?;
+
+        if let Some(old_val) = old {
+            let before_snapshot = serde_json::to_string(&old_val)
+                .map_err(|e| format!("Failed to serialize before snapshot: {}", e))?;
+            let after_snapshot = serde_json::to_string(&location)
+                .map_err(|e| format!("Failed to serialize after snapshot: {}", e))?;
+            self.insert_operation_log(
+                conn,
+                OperationType::Update,
+                ObjectType::Location,
+                &location.id,
+                Some(&location.name),
+                Some(&before_snapshot),
+                Some(&after_snapshot),
+            )?;
+        }
 
         Ok(location.clone())
     }
@@ -857,8 +1187,39 @@ impl Database {
         let conn_guard = self.get_conn()?;
         let conn = conn_guard.as_ref().unwrap();
 
+        let old = conn
+            .query_row(
+                "SELECT id, name, code, description, parent_id FROM locations WHERE id = ?1",
+                params![id],
+                |row| {
+                    Ok(Location {
+                        id: row.get(0)?,
+                        name: row.get(1)?,
+                        code: row.get(2)?,
+                        description: row.get(3)?,
+                        parent_id: row.get(4)?,
+                    })
+                },
+            )
+            .optional()
+            .map_err(|e| format!("Failed to query old location: {}", e))?;
+
         conn.execute("DELETE FROM locations WHERE id = ?1", params![id])
             .map_err(|e| format!("Failed to delete location: {}", e))?;
+
+        if let Some(old_val) = old {
+            let before_snapshot = serde_json::to_string(&old_val)
+                .map_err(|e| format!("Failed to serialize before snapshot: {}", e))?;
+            self.insert_operation_log(
+                conn,
+                OperationType::Delete,
+                ObjectType::Location,
+                id,
+                Some(&old_val.name),
+                Some(&before_snapshot),
+                None,
+            )?;
+        }
 
         Ok(())
     }
@@ -1018,6 +1379,18 @@ impl Database {
             .map_err(|e| format!("Failed to insert moc part: {}", e))?;
         }
 
+        let after_snapshot = serde_json::to_string(&moc)
+            .map_err(|e| format!("Failed to serialize after snapshot: {}", e))?;
+        self.insert_operation_log(
+            &tx,
+            OperationType::Create,
+            ObjectType::MocList,
+            &moc.id,
+            Some(&moc.name),
+            None,
+            Some(&after_snapshot),
+        )?;
+
         tx.commit()
             .map_err(|e| format!("Failed to commit transaction: {}", e))?;
 
@@ -1027,6 +1400,8 @@ impl Database {
     pub fn update_moc_list(&self, moc: &MocList) -> Result<MocList, String> {
         let mut conn_guard = self.get_conn()?;
         let conn = conn_guard.as_mut().unwrap();
+
+        let old_moc = self.get_moc_list_by_id_with_conn(conn, &moc.id)?;
 
         let mut moc = moc.clone();
         moc.update_timestamp();
@@ -1061,6 +1436,22 @@ impl Database {
             .map_err(|e| format!("Failed to insert moc part: {}", e))?;
         }
 
+        if let Some(old) = old_moc {
+            let before_snapshot = serde_json::to_string(&old)
+                .map_err(|e| format!("Failed to serialize before snapshot: {}", e))?;
+            let after_snapshot = serde_json::to_string(&moc)
+                .map_err(|e| format!("Failed to serialize after snapshot: {}", e))?;
+            self.insert_operation_log(
+                &tx,
+                OperationType::Update,
+                ObjectType::MocList,
+                &moc.id,
+                Some(&moc.name),
+                Some(&before_snapshot),
+                Some(&after_snapshot),
+            )?;
+        }
+
         tx.commit()
             .map_err(|e| format!("Failed to commit transaction: {}", e))?;
 
@@ -1071,6 +1462,8 @@ impl Database {
         let conn_guard = self.get_conn()?;
         let conn = conn_guard.as_ref().unwrap();
 
+        let old_moc = self.get_moc_list_by_id(id)?;
+
         if let Some(app_dir) = self.app_data_dir.lock().unwrap().as_ref() {
             let image_path = app_dir.join("images").join("moc").join(format!("{}.jpg", id));
             if image_path.exists() {
@@ -1080,6 +1473,20 @@ impl Database {
 
         conn.execute("DELETE FROM moc_lists WHERE id = ?1", params![id])
             .map_err(|e| format!("Failed to delete moc list: {}", e))?;
+
+        if let Some(old) = old_moc {
+            let before_snapshot = serde_json::to_string(&old)
+                .map_err(|e| format!("Failed to serialize before snapshot: {}", e))?;
+            self.insert_operation_log(
+                conn,
+                OperationType::Delete,
+                ObjectType::MocList,
+                id,
+                Some(&old.name),
+                Some(&before_snapshot),
+                None,
+            )?;
+        }
 
         Ok(())
     }
@@ -1162,15 +1569,15 @@ impl Database {
         let mut conn_guard = self.get_conn()?;
         let conn = conn_guard.as_mut().unwrap();
 
-        let moc = self
+        let old_moc = self
             .get_moc_list_by_id_with_conn(conn, &change.moc_id)?
             .ok_or_else(|| "MOC list not found".to_string())?;
 
-        let old_status = moc.status.as_str().to_string();
+        let old_status = old_moc.status.as_str().to_string();
         let new_status = change.new_status.as_str().to_string();
 
         if old_status == new_status {
-            return Ok(moc);
+            return Ok(old_moc);
         }
 
         let tx = conn
@@ -1195,11 +1602,27 @@ impl Database {
             change.remark,
         )?;
 
+        let updated_moc = self.get_moc_list_by_id_with_conn(&tx, &change.moc_id)?
+            .ok_or_else(|| "MOC list not found after update".to_string())?;
+
+        let before_snapshot = serde_json::to_string(&old_moc)
+            .map_err(|e| format!("Failed to serialize before snapshot: {}", e))?;
+        let after_snapshot = serde_json::to_string(&updated_moc)
+            .map_err(|e| format!("Failed to serialize after snapshot: {}", e))?;
+        self.insert_operation_log(
+            &tx,
+            OperationType::Update,
+            ObjectType::MocList,
+            &change.moc_id,
+            Some(&updated_moc.name),
+            Some(&before_snapshot),
+            Some(&after_snapshot),
+        )?;
+
         tx.commit()
             .map_err(|e| format!("Failed to commit transaction: {}", e))?;
 
-        self.get_moc_list_by_id_with_conn(conn, &change.moc_id)?
-            .ok_or_else(|| "MOC list not found after update".to_string())
+        Ok(updated_moc)
     }
 
     pub fn get_moc_status_logs(&self, moc_id: &str) -> Result<Vec<MocStatusLog>, String> {
@@ -1262,6 +1685,8 @@ impl Database {
         let conn_guard = self.get_conn()?;
         let conn = conn_guard.as_ref().unwrap();
 
+        let old_moc = self.get_moc_list_by_id(moc_id)?;
+
         use chrono::Utc;
         let now: DateTime<Utc> = Utc::now();
 
@@ -1270,6 +1695,24 @@ impl Database {
             params![path_str, now.to_rfc3339(), moc_id],
         )
         .map_err(|e| format!("Failed to update moc cover image path: {}", e))?;
+
+        if let Some(mut old) = old_moc.clone() {
+            let before_snapshot = serde_json::to_string(&old)
+                .map_err(|e| format!("Failed to serialize before snapshot: {}", e))?;
+            old.cover_image_path = Some(path_str.to_string());
+            old.update_timestamp();
+            let after_snapshot = serde_json::to_string(&old)
+                .map_err(|e| format!("Failed to serialize after snapshot: {}", e))?;
+            self.insert_operation_log(
+                conn,
+                OperationType::Update,
+                ObjectType::MocList,
+                moc_id,
+                old_moc.as_ref().map(|m| m.name.as_str()),
+                Some(&before_snapshot),
+                Some(&after_snapshot),
+            )?;
+        }
 
         Ok(path_str.to_string())
     }
@@ -1291,6 +1734,8 @@ impl Database {
         let conn_guard = self.get_conn()?;
         let conn = conn_guard.as_ref().unwrap();
 
+        let old_moc = self.get_moc_list_by_id(moc_id)?;
+
         use chrono::Utc;
         let now: DateTime<Utc> = Utc::now();
 
@@ -1299,6 +1744,24 @@ impl Database {
             params![now.to_rfc3339(), moc_id],
         )
         .map_err(|e| format!("Failed to update moc cover image path: {}", e))?;
+
+        if let Some(mut old) = old_moc.clone() {
+            let before_snapshot = serde_json::to_string(&old)
+                .map_err(|e| format!("Failed to serialize before snapshot: {}", e))?;
+            old.cover_image_path = None;
+            old.update_timestamp();
+            let after_snapshot = serde_json::to_string(&old)
+                .map_err(|e| format!("Failed to serialize after snapshot: {}", e))?;
+            self.insert_operation_log(
+                conn,
+                OperationType::Update,
+                ObjectType::MocList,
+                moc_id,
+                old_moc.as_ref().map(|m| m.name.as_str()),
+                Some(&before_snapshot),
+                Some(&after_snapshot),
+            )?;
+        }
 
         Ok(())
     }
@@ -1627,11 +2090,31 @@ impl Database {
         let conn_guard = self.get_conn()?;
         let conn = conn_guard.as_ref().unwrap();
 
+        let old_part = self.get_part_by_id(part_id)?;
+
         conn.execute(
             "UPDATE parts SET image_path = ?1 WHERE id = ?2",
             params![path_str, part_id],
         )
         .map_err(|e| format!("Failed to update part image path: {}", e))?;
+
+        if let Some(mut old) = old_part.clone() {
+            let before_snapshot = serde_json::to_string(&old)
+                .map_err(|e| format!("Failed to serialize before snapshot: {}", e))?;
+            old.image_path = Some(path_str.to_string());
+            old.update_timestamp();
+            let after_snapshot = serde_json::to_string(&old)
+                .map_err(|e| format!("Failed to serialize after snapshot: {}", e))?;
+            self.insert_operation_log(
+                conn,
+                OperationType::Update,
+                ObjectType::Part,
+                part_id,
+                old_part.as_ref().map(|p| p.name.as_str()),
+                Some(&before_snapshot),
+                Some(&after_snapshot),
+            )?;
+        }
 
         Ok(path_str.to_string())
     }
@@ -1653,11 +2136,31 @@ impl Database {
         let conn_guard = self.get_conn()?;
         let conn = conn_guard.as_ref().unwrap();
 
+        let old_part = self.get_part_by_id(part_id)?;
+
         conn.execute(
             "UPDATE parts SET image_path = NULL WHERE id = ?1",
             params![part_id],
         )
         .map_err(|e| format!("Failed to update part image path: {}", e))?;
+
+        if let Some(mut old) = old_part.clone() {
+            let before_snapshot = serde_json::to_string(&old)
+                .map_err(|e| format!("Failed to serialize before snapshot: {}", e))?;
+            old.image_path = None;
+            old.update_timestamp();
+            let after_snapshot = serde_json::to_string(&old)
+                .map_err(|e| format!("Failed to serialize after snapshot: {}", e))?;
+            self.insert_operation_log(
+                conn,
+                OperationType::Update,
+                ObjectType::Part,
+                part_id,
+                old_part.as_ref().map(|p| p.name.as_str()),
+                Some(&before_snapshot),
+                Some(&after_snapshot),
+            )?;
+        }
 
         Ok(())
     }
@@ -1676,6 +2179,95 @@ impl Database {
             .map_err(|e| format!("Failed to query image path: {}", e))?;
 
         Ok(path)
+    }
+
+    fn insert_operation_log(
+        &self,
+        conn: &Connection,
+        operation_type: OperationType,
+        object_type: ObjectType,
+        object_id: &str,
+        object_name: Option<&str>,
+        before_snapshot: Option<&str>,
+        after_snapshot: Option<&str>,
+    ) -> Result<(), String> {
+        use chrono::Utc;
+        let log_id = Uuid::new_v4().to_string();
+        let now: DateTime<Utc> = Utc::now();
+
+        conn.execute(
+            "INSERT INTO operation_logs (id, operation_type, object_type, object_id, object_name, before_snapshot, after_snapshot, changed_at) 
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            params![
+                log_id,
+                operation_type.as_str(),
+                object_type.as_str(),
+                object_id,
+                object_name,
+                before_snapshot,
+                after_snapshot,
+                now.to_rfc3339()
+            ],
+        )
+        .map_err(|e| format!("Failed to insert operation log: {}", e))?;
+
+        Ok(())
+    }
+
+    pub fn get_operation_logs(&self, filter: Option<OperationLogFilter>) -> Result<Vec<OperationLog>, String> {
+        let conn_guard = self.get_conn()?;
+        let conn = conn_guard.as_ref().unwrap();
+
+        let mut sql = "SELECT id, operation_type, object_type, object_id, object_name, before_snapshot, after_snapshot, changed_at FROM operation_logs WHERE 1=1".to_string();
+        let mut params_list: Vec<String> = Vec::new();
+
+        if let Some(f) = filter {
+            if let Some(op_type) = f.operation_type {
+                sql.push_str(" AND operation_type = ?");
+                params_list.push(op_type);
+            }
+            if let Some(obj_type) = f.object_type {
+                sql.push_str(" AND object_type = ?");
+                params_list.push(obj_type);
+            }
+            if let Some(obj_id) = f.object_id {
+                sql.push_str(" AND object_id = ?");
+                params_list.push(obj_id);
+            }
+        }
+
+        sql.push_str(" ORDER BY changed_at DESC LIMIT 500");
+
+        let mut stmt = conn
+            .prepare(&sql)
+            .map_err(|e| format!("Failed to prepare query: {}", e))?;
+
+        let params_refs: Vec<&dyn rusqlite::ToSql> = params_list
+            .iter()
+            .map(|p| p as &dyn rusqlite::ToSql)
+            .collect();
+
+        let rows = stmt
+            .query_map(params_refs.as_slice(), |row| {
+                Ok(OperationLog {
+                    id: row.get(0)?,
+                    operation_type: OperationType::from_str(&row.get::<_, String>(1)?),
+                    object_type: ObjectType::from_str(&row.get::<_, String>(2)?),
+                    object_id: row.get(3)?,
+                    object_name: row.get(4)?,
+                    before_snapshot: row.get(5)?,
+                    after_snapshot: row.get(6)?,
+                    changed_at: row.get(7)?,
+                })
+            })
+            .map_err(|e| format!("Failed to query operation logs: {}", e))?;
+
+        let mut logs = Vec::new();
+        for row in rows {
+            logs.push(row.map_err(|e| format!("Failed to read operation log: {}", e))?);
+        }
+
+        Ok(logs)
     }
 }
 

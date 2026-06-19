@@ -161,3 +161,45 @@ export interface LocationCount {
   code?: string;
   children?: LocationCount[];
 }
+
+export type OperationType = "create" | "update" | "delete";
+
+export type ObjectType =
+  | "part"
+  | "part_type"
+  | "part_color"
+  | "part_size"
+  | "location"
+  | "moc_list";
+
+export interface OperationLog {
+  id: string;
+  operationType: OperationType;
+  objectType: ObjectType;
+  objectId: string;
+  objectName?: string;
+  beforeSnapshot?: string;
+  afterSnapshot?: string;
+  changedAt: string;
+}
+
+export interface OperationLogFilter {
+  operationType?: string;
+  objectType?: string;
+  objectId?: string;
+}
+
+export const OPERATION_TYPE_OPTIONS: { value: OperationType; label: string; type: "success" | "primary" | "danger" | "warning" }[] = [
+  { value: "create", label: "新增", type: "success" },
+  { value: "update", label: "修改", type: "primary" },
+  { value: "delete", label: "删除", type: "danger" },
+];
+
+export const OBJECT_TYPE_OPTIONS: { value: ObjectType; label: string }[] = [
+  { value: "part", label: "零件" },
+  { value: "part_type", label: "零件类型" },
+  { value: "part_color", label: "零件颜色" },
+  { value: "part_size", label: "零件尺寸" },
+  { value: "location", label: "存放位置" },
+  { value: "moc_list", label: "MOC清单" },
+];

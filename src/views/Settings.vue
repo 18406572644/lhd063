@@ -1,7 +1,10 @@
 <script setup lang="ts">
-import { ref } from "vue";
-import { Refresh, Lock, InfoFilled, Coin, Warning } from "@element-plus/icons-vue";
+import { ref, onMounted } from "vue";
+import { Refresh, Lock, InfoFilled, Coin, Warning, List, View } from "@element-plus/icons-vue";
 import { useAppStore } from "@/stores";
+import type { OperationLog, OperationLogFilter } from "@/types";
+import { OPERATION_TYPE_OPTIONS, OBJECT_TYPE_OPTIONS } from "@/types";
+import { api } from "@/api";
 
 const appStore = useAppStore();
 
@@ -9,6 +12,14 @@ const keyDialogVisible = ref(false);
 const oldKey = ref("");
 const newKey = ref("");
 const confirmKey = ref("");
+
+const logsDialogVisible = ref(false);
+const operationLogs = ref<OperationLog[]>([]);
+const logsLoading = ref(false);
+const filterOperationType = ref("");
+const filterObjectType = ref("");
+const logDetailDialogVisible = ref(false);
+const currentLog = ref<OperationLog | null>(null);
 
 const appInfo = ref({
   version: "0.1.0",
@@ -53,6 +64,75 @@ function generateRandomKey() {
   newKey.value = result;
   confirmKey.value = result;
 }
+
+async function openLogsDialog() {
+  logsDialogVisible.value = true;
+  await loadOperationLogs();
+}
+
+async function loadOperationLogs() {
+  logsLoading.value = true;
+  try {
+    const filter: OperationLogFilter = {};
+    if (filterOperationType.value) filter.operationType = filterOperationType.value;
+    if (filterObjectType.value) filter.objectType = filterObjectType.value;
+    operationLogs.value = await api.getOperationLogs(filter);
+  } finally {
+    logsLoading.value = false;
+  }
+}
+
+function handleFilterReset() {
+  filterOperationType.value = "";
+  filterObjectType.value = "";
+  loadOperationLogs();
+}
+
+function getOperationTypeLabel(type: string) {
+  const opt = OPERATION_TYPE_OPTIONS.find((o) => o.value === type);
+  return opt?.label || type;
+}
+
+function getOperationTypeTagType(type: string) {
+  const opt = OPERATION_TYPE_OPTIONS.find((o) => o.value === type);
+  return opt?.type || "info";
+}
+
+function getObjectTypeLabel(type: string) {
+  const opt = OBJECT_TYPE_OPTIONS.find((o) => o.value === type);
+  return opt?.label || type;
+}
+
+function formatDate(dateStr: string) {
+  try {
+    return new Date(dateStr).toLocaleString("zh-CN");
+  } catch {
+    return dateStr;
+  }
+}
+
+function parseSnapshot(snapshot?: string) {
+  if (!snapshot) return null;
+  try {
+    return JSON.parse(snapshot);
+  } catch {
+    return null;
+  }
+}
+
+function viewLogDetail(log: OperationLog) {
+  currentLog.value = log;
+  logDetailDialogVisible.value = true;
+}
+
+function formatSnapshot(snapshot?: string) {
+  const data = parseSnapshot(snapshot);
+  if (!data) return "-";
+  return JSON.stringify(data, null, 2);
+}
+
+onMounted(() => {
+});
 </script>
 
 <template>
@@ -94,6 +174,30 @@ function generateRandomKey() {
               >
                 <el-icon><Lock /></el-icon>
                 修改密钥
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="settings-section brick-card">
+        <div class="section-header">
+          <el-icon><List :size="20" /></el-icon>
+          <h2>操作日志</h2>
+        </div>
+        <div class="section-body">
+          <div class="setting-item">
+            <div class="setting-info">
+              <h3>全局操作日志</h3>
+              <p>查看所有数据的增删改操作记录，支持按操作类型和对象类型筛选</p>
+            </div>
+            <div class="setting-action">
+              <button
+                class="brick-btn brick-btn-sm"
+                @click="openLogsDialog"
+              >
+                <el-icon><List /></el-icon>
+                查看日志
               </button>
             </div>
           </div>
@@ -215,6 +319,149 @@ function generateRandomKey() {
         </button>
         <button class="brick-btn" @click="handleChangeKey">
           确认修改
+        </button>
+      </template>
+    </el-dialog>
+
+    <el-dialog
+      v-model="logsDialogVisible"
+      title="全局操作日志"
+      width="900px"
+      :close-on-click-modal="false"
+    >
+      <div class="logs-filter">
+        <div class="filter-item">
+          <el-select
+            v-model="filterOperationType"
+            placeholder="操作类型"
+            clearable
+            style="width: 160px"
+          >
+            <el-option
+              v-for="opt in OPERATION_TYPE_OPTIONS"
+              :key="opt.value"
+              :label="opt.label"
+              :value="opt.value"
+            />
+          </el-select>
+        </div>
+        <div class="filter-item">
+          <el-select
+            v-model="filterObjectType"
+            placeholder="对象类型"
+            clearable
+            style="width: 160px"
+          >
+            <el-option
+              v-for="opt in OBJECT_TYPE_OPTIONS"
+              :key="opt.value"
+              :label="opt.label"
+              :value="opt.value"
+            />
+          </el-select>
+        </div>
+        <div class="filter-item filter-actions">
+          <button class="brick-btn brick-btn-sm" @click="loadOperationLogs">
+            <el-icon><Refresh /></el-icon>
+            查询
+          </button>
+          <button
+            class="brick-btn brick-btn-sm brick-btn-secondary"
+            @click="handleFilterReset"
+          >
+            重置
+          </button>
+        </div>
+      </div>
+
+      <div v-loading="logsLoading" class="logs-table-wrap">
+        <el-table
+          :data="operationLogs"
+          border
+          stripe
+          style="width: 100%"
+          max-height="500"
+          empty-text="暂无操作日志"
+        >
+          <el-table-column label="操作类型" width="100">
+            <template #default="{ row }">
+              <el-tag :type="getOperationTypeTagType(row.operationType)" effect="dark" size="small">
+                {{ getOperationTypeLabel(row.operationType) }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="对象类型" width="110">
+            <template #default="{ row }">
+              {{ getObjectTypeLabel(row.objectType) }}
+            </template>
+          </el-table-column>
+          <el-table-column label="对象名称" min-width="160">
+            <template #default="{ row }">
+              {{ row.objectName || "-" }}
+            </template>
+          </el-table-column>
+          <el-table-column label="操作时间" width="180">
+            <template #default="{ row }">
+              {{ formatDate(row.changedAt) }}
+            </template>
+          </el-table-column>
+          <el-table-column label="操作" width="100">
+            <template #default="{ row }">
+              <button class="link-btn" @click="viewLogDetail(row)">
+                <el-icon><View /></el-icon>
+                查看详情
+              </button>
+            </template>
+          </el-table-column>
+        </el-table>
+      </div>
+
+      <template #footer>
+        <button class="brick-btn brick-btn-secondary" @click="logsDialogVisible = false">
+          关闭
+        </button>
+      </template>
+    </el-dialog>
+
+    <el-dialog
+      v-model="logDetailDialogVisible"
+      title="操作日志详情"
+      width="680px"
+    >
+      <div v-if="currentLog" class="log-detail">
+        <el-descriptions :column="2" border>
+          <el-descriptions-item label="操作类型">
+            <el-tag :type="getOperationTypeTagType(currentLog.operationType)" effect="dark" size="small">
+              {{ getOperationTypeLabel(currentLog.operationType) }}
+            </el-tag>
+          </el-descriptions-item>
+          <el-descriptions-item label="对象类型">
+            {{ getObjectTypeLabel(currentLog.objectType) }}
+          </el-descriptions-item>
+          <el-descriptions-item label="对象名称" :span="2">
+            {{ currentLog.objectName || "-" }}
+          </el-descriptions-item>
+          <el-descriptions-item label="对象 ID" :span="2">
+            <span class="mono-text">{{ currentLog.objectId }}</span>
+          </el-descriptions-item>
+          <el-descriptions-item label="操作时间" :span="2">
+            {{ formatDate(currentLog.changedAt) }}
+          </el-descriptions-item>
+        </el-descriptions>
+
+        <div class="snapshot-section">
+          <h4>变更前</h4>
+          <pre class="snapshot-content">{{ formatSnapshot(currentLog.beforeSnapshot) }}</pre>
+        </div>
+
+        <div class="snapshot-section">
+          <h4>变更后</h4>
+          <pre class="snapshot-content">{{ formatSnapshot(currentLog.afterSnapshot) }}</pre>
+        </div>
+      </div>
+      <template #footer>
+        <button class="brick-btn brick-btn-secondary" @click="logDetailDialogVisible = false">
+          关闭
         </button>
       </template>
     </el-dialog>
@@ -381,5 +628,61 @@ function generateRandomKey() {
   font-size: $font-size-sm;
   border-radius: $brick-radius;
   margin-top: $spacing-md;
+}
+
+.logs-filter {
+  display: flex;
+  gap: $spacing-sm;
+  margin-bottom: $spacing-md;
+  align-items: center;
+
+  .filter-actions {
+    display: flex;
+    gap: $spacing-xs;
+    margin-left: auto;
+  }
+}
+
+.logs-table-wrap {
+  min-height: 200px;
+}
+
+.log-detail {
+  .snapshot-section {
+    margin-top: $spacing-md;
+
+    h4 {
+      margin: 0 0 $spacing-xs 0;
+      font-size: $font-size-sm;
+      color: $color-gray-light;
+      font-weight: 500;
+    }
+  }
+
+  .snapshot-content {
+    background: $color-dark;
+    border: 1px solid $color-dark-border;
+    border-radius: $brick-radius;
+    padding: $spacing-md;
+    max-height: 240px;
+    overflow-y: auto;
+    color: $color-gray-light;
+    font-size: $font-size-sm;
+    margin: 0;
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
+}
+
+.mono-text {
+  font-family: monospace;
+}
+
+:deep(.el-descriptions) {
+  --el-descriptions-table-border: 1px solid $color-dark-border;
+  --el-descriptions-item-label-bg: $color-dark-lighter;
+  --el-descriptions-item-content-bg: $color-dark;
+  --el-text-color-primary: $color-white;
+  --el-text-color-regular: $color-gray-light;
 }
 </style>

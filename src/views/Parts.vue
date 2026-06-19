@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from "vue";
-import { Plus, Edit, Delete, Search, Refresh, Camera, Picture } from "@element-plus/icons-vue";
+import { Plus, Edit, Delete, Search, Refresh, Camera, Picture, View } from "@element-plus/icons-vue";
 import { usePartsStore, useMasterDataStore, useAppStore } from "@/stores";
 import type { Part, LocationTreeNode } from "@/types";
 import PartDialog from "@/components/PartDialog.vue";
@@ -16,8 +16,10 @@ const filterColor = ref("");
 const filterSize = ref("");
 const filterLocation = ref("");
 const dialogVisible = ref(false);
+const viewDialogVisible = ref(false);
 const imageDialogVisible = ref(false);
 const editingPart = ref<Part | null>(null);
+const viewingPart = ref<Part | null>(null);
 const imagePartId = ref("");
 const imagePartName = ref("");
 
@@ -90,6 +92,19 @@ async function handleDelete(part: Part) {
   if (confirmed) {
     await partsStore.deletePart(part.id);
     appStore.showSuccess("删除成功");
+  }
+}
+
+function handleView(part: Part) {
+  viewingPart.value = { ...part };
+  viewDialogVisible.value = true;
+}
+
+function handleViewEdit() {
+  if (viewingPart.value) {
+    editingPart.value = { ...viewingPart.value };
+    viewDialogVisible.value = false;
+    dialogVisible.value = true;
   }
 }
 
@@ -290,6 +305,13 @@ onMounted(() => {
             <div class="part-actions">
               <button
                 class="icon-btn"
+                @click="handleView(part)"
+                title="查看详情"
+              >
+                <el-icon><View /></el-icon>
+              </button>
+              <button
+                class="icon-btn"
                 @click="handleImage(part)"
                 title="管理图片"
               >
@@ -378,6 +400,13 @@ onMounted(() => {
       v-model="dialogVisible"
       :part="editingPart"
       @save="handleDialogSave"
+    />
+
+    <PartDialog
+      v-model="viewDialogVisible"
+      :part="viewingPart"
+      mode="view"
+      @edit="handleViewEdit"
     />
 
     <PartImageDialog

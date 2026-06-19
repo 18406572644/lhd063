@@ -11,6 +11,8 @@ import type {
   MocStatusLog,
   PartFilter,
   StatsData,
+  OperationLog,
+  OperationLogFilter,
 } from "@/types";
 
 function isTauriAvailable(): boolean {
@@ -309,6 +311,61 @@ function getMockData(command: string, args?: Record<string, unknown>): unknown {
       return Promise.resolve("mock-moc-cover-path");
     case "delete_moc_cover_image":
       return Promise.resolve();
+    case "get_operation_logs": {
+      const filter = args?.filter as OperationLogFilter | undefined;
+      let result = [
+        {
+          id: "log1",
+          operationType: "create" as const,
+          objectType: "part" as const,
+          objectId: "1",
+          objectName: "2x4 基础砖",
+          beforeSnapshot: undefined,
+          afterSnapshot: JSON.stringify(mockParts[0]),
+          changedAt: now,
+        },
+        {
+          id: "log2",
+          operationType: "update" as const,
+          objectType: "part" as const,
+          objectId: "1",
+          objectName: "2x4 基础砖",
+          beforeSnapshot: JSON.stringify({ ...mockParts[0], quantity: 100 }),
+          afterSnapshot: JSON.stringify(mockParts[0]),
+          changedAt: now,
+        },
+        {
+          id: "log3",
+          operationType: "create" as const,
+          objectType: "part_type" as const,
+          objectId: "1",
+          objectName: "砖类",
+          beforeSnapshot: undefined,
+          afterSnapshot: JSON.stringify(mockTypes[0]),
+          changedAt: now,
+        },
+        {
+          id: "log4",
+          operationType: "create" as const,
+          objectType: "moc_list" as const,
+          objectId: "1",
+          objectName: "迷你机器人",
+          beforeSnapshot: undefined,
+          afterSnapshot: JSON.stringify(mockMocs[0]),
+          changedAt: now,
+        },
+      ];
+      if (filter?.operationType) {
+        result = result.filter(l => l.operationType === filter.operationType);
+      }
+      if (filter?.objectType) {
+        result = result.filter(l => l.objectType === filter.objectType);
+      }
+      if (filter?.objectId) {
+        result = result.filter(l => l.objectId === filter.objectId);
+      }
+      return Promise.resolve(result);
+    }
     default:
       return Promise.resolve({});
   }
@@ -473,5 +530,9 @@ export const api = {
 
   async deleteMocCoverImage(mocId: string): Promise<void> {
     return wrapInvoke("delete_moc_cover_image", { mocId });
+  },
+
+  async getOperationLogs(filter?: OperationLogFilter): Promise<OperationLog[]> {
+    return wrapInvoke("get_operation_logs", { filter });
   },
 };

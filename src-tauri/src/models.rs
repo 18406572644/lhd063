@@ -463,3 +463,86 @@ pub struct MocStatusChange {
     pub new_status: MocStatus,
     pub remark: Option<String>,
 }
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(rename_all = "camelCase")]
+pub enum OperationType {
+    Create,
+    Update,
+    Delete,
+}
+
+impl OperationType {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            OperationType::Create => "create",
+            OperationType::Update => "update",
+            OperationType::Delete => "delete",
+        }
+    }
+
+    pub fn from_str(s: &str) -> Self {
+        match s {
+            "update" => OperationType::Update,
+            "delete" => OperationType::Delete,
+            _ => OperationType::Create,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(rename_all = "camelCase")]
+pub enum ObjectType {
+    Part,
+    PartType,
+    PartColor,
+    PartSize,
+    Location,
+    MocList,
+}
+
+impl ObjectType {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ObjectType::Part => "part",
+            ObjectType::PartType => "part_type",
+            ObjectType::PartColor => "part_color",
+            ObjectType::PartSize => "part_size",
+            ObjectType::Location => "location",
+            ObjectType::MocList => "moc_list",
+        }
+    }
+
+    pub fn from_str(s: &str) -> Self {
+        match s {
+            "part_type" => ObjectType::PartType,
+            "part_color" => ObjectType::PartColor,
+            "part_size" => ObjectType::PartSize,
+            "location" => ObjectType::Location,
+            "moc_list" => ObjectType::MocList,
+            _ => ObjectType::Part,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OperationLog {
+    pub id: String,
+    pub operation_type: OperationType,
+    pub object_type: ObjectType,
+    pub object_id: String,
+    pub object_name: Option<String>,
+    pub before_snapshot: Option<String>,
+    pub after_snapshot: Option<String>,
+    pub changed_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OperationLogFilter {
+    pub operation_type: Option<String>,
+    pub object_type: Option<String>,
+    pub object_id: Option<String>,
+}
+
