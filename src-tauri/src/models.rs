@@ -3,6 +3,7 @@ use uuid::Uuid;
 use chrono::{DateTime, Utc};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Part {
     pub id: String,
     pub name: String,
@@ -54,6 +55,7 @@ impl Part {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PartType {
     pub id: String,
     pub name: String,
@@ -73,6 +75,7 @@ impl PartType {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PartColor {
     pub id: String,
     pub name: String,
@@ -92,6 +95,7 @@ impl PartColor {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PartSize {
     pub id: String,
     pub name: String,
@@ -113,6 +117,7 @@ impl PartSize {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Location {
     pub id: String,
     pub name: String,
@@ -139,6 +144,7 @@ impl Location {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct MocList {
     pub id: String,
     pub name: String,
@@ -172,6 +178,7 @@ impl MocList {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct MocPart {
     pub part_id: String,
     pub part_number: String,
@@ -183,6 +190,7 @@ pub struct MocPart {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PartFilter {
     pub r#type: Option<String>,
     pub color: Option<String>,
@@ -192,6 +200,7 @@ pub struct PartFilter {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct StatsData {
     pub total_parts: i64,
     pub total_quantity: i64,

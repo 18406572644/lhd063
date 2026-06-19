@@ -24,6 +24,22 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+.el-icon {
+  width: 1em;
+  height: 1em;
+  font-size: inherit;
+  vertical-align: middle;
+  flex-shrink: 0;
+}
+
+svg {
+  width: 1em;
+  height: 1em;
+  fill: currentColor;
+  overflow: hidden;
+  vertical-align: middle;
+}
+
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;

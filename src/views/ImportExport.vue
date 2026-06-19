@@ -436,7 +436,7 @@ function downloadTemplate() {
     color: $color-gray-dark;
   }
 
-  el-icon {
+  :deep(.el-icon) {
     color: $color-gray-dark;
     transition: color $transition-fast;
   }
@@ -449,7 +449,7 @@ function downloadTemplate() {
     border-color: $color-primary;
     background: rgba(255, 214, 0, 0.1);
 
-    el-icon {
+    :deep(.el-icon) {
       color: $color-primary;
     }
 
@@ -576,7 +576,7 @@ function downloadTemplate() {
     background: rgba(255, 214, 0, 0.05);
   }
 
-  el-icon {
+  :deep(.el-icon) {
     color: $color-primary;
   }
 

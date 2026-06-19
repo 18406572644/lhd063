@@ -7,7 +7,7 @@ import {
   DataLine,
   Warning,
   TrendCharts,
-  IceCream,
+  Setting,
 } from "@element-plus/icons-vue";
 import { useStatsStore, usePartsStore, useMocStore, useMasterDataStore } from "@/stores";
 import { useRouter } from "vue-router";
@@ -76,7 +76,7 @@ const statCards = computed(() => {
     {
       title: "MOC 缺件",
       value: statsStore.stats.missingPartsInMocs,
-      icon: IceCream,
+      icon: Setting,
       color: "danger",
       path: "/moc",
     },
@@ -259,7 +259,7 @@ onMounted(() => {
               <span>导入导出</span>
             </button>
             <button class="quick-btn" @click="goTo('/settings')">
-              <el-icon><ColorPicker /></el-icon>
+              <el-icon><Setting /></el-icon>
               <span>系统设置</span>
             </button>
           </div>
@@ -271,6 +271,7 @@ onMounted(() => {
 
 <style scoped lang="scss">
 @use "@/styles/variables.scss" as *;
+@use "sass:color";
 
 .stats-grid {
   display: grid;
@@ -493,7 +494,7 @@ onMounted(() => {
 
   .bar-fill-h {
     height: 100%;
-    background: linear-gradient(90deg, $color-info, darken($color-info, 15%));
+    background: linear-gradient(90deg, $color-info, color.adjust($color-info, $lightness: -15%));
     border-radius: $brick-radius;
     transition: width $transition-normal;
     min-width: 4px;
@@ -547,7 +548,7 @@ onMounted(() => {
   cursor: pointer;
   transition: all $transition-fast;
 
-  el-icon {
+  :deep(.el-icon) {
     font-size: 32px;
     color: $color-primary;
   }
