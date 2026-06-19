@@ -10,6 +10,7 @@ import {
   DataLine,
   Setting,
   Upload,
+  Refresh,
 } from "@element-plus/icons-vue";
 
 const appStore = useAppStore();
@@ -29,6 +30,11 @@ const activeMenu = computed(() => route.path);
 onMounted(async () => {
   await appStore.initializeApp();
 });
+
+async function retryInit() {
+  appStore.initialized = false;
+  await appStore.initializeApp();
+}
 </script>
 
 <template>
@@ -93,6 +99,18 @@ onMounted(async () => {
         <div class="loading-content">
           <div class="loading-spinner"></div>
           <div class="loading-text">{{ appStore.loadingText }}</div>
+        </div>
+      </div>
+    </transition>
+
+    <transition name="fade">
+      <div v-if="appStore.initError && !appStore.loading" class="loading-overlay">
+        <div class="loading-content">
+          <div class="loading-text" style="margin-bottom: 16px;">应用初始化失败</div>
+          <button class="brick-btn" @click="retryInit">
+            <el-icon><Refresh /></el-icon>
+            重试
+          </button>
         </div>
       </div>
     </transition>

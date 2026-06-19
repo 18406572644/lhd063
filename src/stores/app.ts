@@ -7,6 +7,7 @@ export const useAppStore = defineStore("app", () => {
   const loading = ref(false);
   const loadingText = ref("加载中...");
   const initialized = ref(false);
+  const initError = ref(false);
   const sidebarCollapsed = ref(false);
   const encryptionKey = ref("");
 
@@ -74,14 +75,21 @@ export const useAppStore = defineStore("app", () => {
   async function initializeApp() {
     if (initialized.value) return;
 
+    initError.value = false;
     startLoading("正在初始化应用...");
     try {
-      await api.initDatabase();
+      const initPromise = api.initDatabase();
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("初始化超时")), 15000)
+      );
+      await Promise.race([initPromise, timeoutPromise]);
+
       encryptionKey.value = await api.getEncryptionKey();
       initialized.value = true;
     } catch (error) {
       console.error("初始化失败:", error);
-      showError("应用初始化失败，请重启应用");
+      initError.value = true;
+      showError("应用初始化失败，请点击重试");
     } finally {
       stopLoading();
     }
@@ -106,6 +114,7 @@ export const useAppStore = defineStore("app", () => {
     loading,
     loadingText,
     initialized,
+    initError,
     sidebarCollapsed,
     encryptionKey,
     startLoading,

@@ -936,10 +936,7 @@ impl Database {
         Ok(parts)
     }
 
-    pub fn get_moc_list_by_id(&self, id: &str) -> Result<Option<MocList>, String> {
-        let conn_guard = self.get_conn()?;
-        let conn = conn_guard.as_ref().unwrap();
-
+    fn get_moc_list_by_id_with_conn(&self, conn: &Connection, id: &str) -> Result<Option<MocList>, String> {
         let moc_info = conn
             .query_row(
                 "SELECT id, name, description, cover_image_path, status, created_at, updated_at FROM moc_lists WHERE id = ?1",
@@ -972,6 +969,12 @@ impl Database {
                 updated_at,
             }
         }))
+    }
+
+    pub fn get_moc_list_by_id(&self, id: &str) -> Result<Option<MocList>, String> {
+        let conn_guard = self.get_conn()?;
+        let conn = conn_guard.as_ref().unwrap();
+        self.get_moc_list_by_id_with_conn(conn, id)
     }
 
     pub fn create_moc_list(&self, input: MocListForCreate) -> Result<MocList, String> {
@@ -1081,12 +1084,9 @@ impl Database {
         Ok(())
     }
 
-    pub fn compare_moc_inventory(&self, moc_id: &str) -> Result<MocList, String> {
-        let conn_guard = self.get_conn()?;
-        let conn = conn_guard.as_ref().unwrap();
-
+    fn compare_moc_inventory_with_conn(&self, conn: &Connection, moc_id: &str) -> Result<MocList, String> {
         let moc = self
-            .get_moc_list_by_id(moc_id)?
+            .get_moc_list_by_id_with_conn(conn, moc_id)?
             .ok_or_else(|| "MOC list not found".to_string())?;
 
         let mut updated_parts = Vec::new();
@@ -1118,6 +1118,12 @@ impl Database {
             parts: updated_parts,
             ..moc
         })
+    }
+
+    pub fn compare_moc_inventory(&self, moc_id: &str) -> Result<MocList, String> {
+        let conn_guard = self.get_conn()?;
+        let conn = conn_guard.as_ref().unwrap();
+        self.compare_moc_inventory_with_conn(conn, moc_id)
     }
 
     fn insert_status_log(
@@ -1157,7 +1163,7 @@ impl Database {
         let conn = conn_guard.as_mut().unwrap();
 
         let moc = self
-            .get_moc_list_by_id(&change.moc_id)?
+            .get_moc_list_by_id_with_conn(conn, &change.moc_id)?
             .ok_or_else(|| "MOC list not found".to_string())?;
 
         let old_status = moc.status.as_str().to_string();
@@ -1192,7 +1198,7 @@ impl Database {
         tx.commit()
             .map_err(|e| format!("Failed to commit transaction: {}", e))?;
 
-        self.get_moc_list_by_id(&change.moc_id)?
+        self.get_moc_list_by_id_with_conn(conn, &change.moc_id)?
             .ok_or_else(|| "MOC list not found after update".to_string())
     }
 
@@ -1420,7 +1426,7 @@ impl Database {
 
         for moc_row in moc_rows {
             let moc_id = moc_row.map_err(|e| format!("Failed to read moc id: {}", e))?;
-            let moc = self.compare_moc_inventory(&moc_id)?;
+            let moc = self.compare_moc_inventory_with_conn(conn, &moc_id)?;
             missing_count += moc.parts.iter().filter(|p| p.is_missing).count() as i64;
         }
 
