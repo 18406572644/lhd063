@@ -1,0 +1,507 @@
+@use './variables.scss' as *;
+@use 'sass:color';
+
+@forward 'element-plus/theme-chalk/src/common/var.scss' with (
+  $colors: (
+    'primary': (
+      'base': $color-primary,
+      'light-3': $color-primary-light,
+      'dark-2': $color-primary-dark,
+    ),
+    'success': (
+      'base': $color-success,
+    ),
+    'warning': (
+      'base': $color-warning,
+    ),
+    'danger': (
+      'base': $color-danger,
+    ),
+    'info': (
+      'base': $color-info,
+    ),
+  ),
+);
+
+.el-button {
+  border-radius: $brick-radius !important;
+  font-weight: 600 !important;
+  border: none !important;
+  box-shadow: 0 3px 0 rgba(0, 0, 0, 0.2) !important;
+  transition: all $transition-fast !important;
+
+  &:hover {
+    transform: translateY(-1px) !important;
+    box-shadow: 0 4px 0 rgba(0, 0, 0, 0.2) !important;
+  }
+
+  &:active {
+    transform: translateY(2px) !important;
+    box-shadow: 0 1px 0 rgba(0, 0, 0, 0.2) !important;
+  }
+
+  &.el-button--primary {
+    background-color: $color-primary !important;
+    color: $color-dark !important;
+
+    &:hover {
+      background-color: $color-primary-light !important;
+    }
+  }
+
+  &.el-button--default {
+    background-color: $color-dark-lighter !important;
+    color: $color-white !important;
+
+    &:hover {
+      background-color: $color-dark-border !important;
+    }
+  }
+
+  &.el-button--danger {
+    &:hover {
+      background-color: color.adjust($color-danger, $lightness: 5%) !important;
+    }
+  }
+
+  &.el-button--text {
+    box-shadow: none !important;
+
+    &:hover {
+      transform: none !important;
+      box-shadow: none !important;
+    }
+
+    &:active {
+      transform: none !important;
+      box-shadow: none !important;
+    }
+  }
+}
+
+.el-input__wrapper {
+  background-color: $color-dark !important;
+  border: $brick-border solid $color-dark-border !important;
+  border-radius: $brick-radius !important;
+  box-shadow: none !important;
+  transition: all $transition-fast !important;
+
+  &:hover {
+    border-color: $color-dark-lighter !important;
+  }
+
+  &.is-focus {
+    border-color: $color-primary !important;
+    box-shadow: 0 0 0 3px rgba(255, 214, 0, 0.2) !important;
+  }
+
+  .el-input__inner {
+    color: $color-white !important;
+
+    &::placeholder {
+      color: $color-gray-dark !important;
+    }
+  }
+}
+
+.el-select {
+  .el-select__wrapper {
+    background-color: $color-dark !important;
+    border: $brick-border solid $color-dark-border !important;
+    border-radius: $brick-radius !important;
+    box-shadow: none !important;
+    transition: all $transition-fast !important;
+
+    &:hover {
+      border-color: $color-dark-lighter !important;
+    }
+
+    &.is-focused {
+      border-color: $color-primary !important;
+      box-shadow: 0 0 0 3px rgba(255, 214, 0, 0.2) !important;
+    }
+
+    .el-select__placeholder {
+      color: $color-gray-dark !important;
+    }
+
+    .el-select__selected-item {
+      color: $color-white !important;
+    }
+  }
+
+  .el-select__popper {
+    background: $color-dark-light !important;
+    border: $brick-border solid $color-dark-border !important;
+    border-radius: $brick-radius !important;
+
+    .el-select-dropdown__item {
+      color: $color-white !important;
+
+      &:hover {
+        background: $color-dark-lighter !important;
+      }
+
+      &.is-selected {
+        background: $color-primary !important;
+        color: $color-dark !important;
+        font-weight: 600 !important;
+      }
+    }
+  }
+}
+
+.el-dialog {
+  background: $color-dark-light !important;
+  border: $brick-border solid $color-dark-border !important;
+  border-radius: $brick-radius !important;
+  box-shadow: $shadow-brick-hover !important;
+
+  .el-dialog__header {
+    border-bottom: $brick-border solid $color-dark-border !important;
+    padding: $spacing-md $spacing-lg !important;
+
+    .el-dialog__title {
+      color: $color-white !important;
+      font-weight: 700 !important;
+      display: flex !important;
+      align-items: center !important;
+      gap: $spacing-sm !important;
+
+      .brick-stud {
+        width: 10px;
+        height: 10px;
+      }
+    }
+
+    .el-dialog__headerbtn {
+      .el-dialog__close {
+        color: $color-gray-dark !important;
+        font-size: 20px !important;
+
+        &:hover {
+          color: $color-primary !important;
+        }
+      }
+    }
+  }
+
+  .el-dialog__body {
+    padding: $spacing-lg !important;
+    color: $color-gray-light !important;
+  }
+
+  .el-dialog__footer {
+    border-top: $brick-border solid $color-dark-border !important;
+    padding: $spacing-md $spacing-lg !important;
+  }
+}
+
+.el-card {
+  background: $color-dark-light !important;
+  border: $brick-border solid $color-dark-border !important;
+  border-radius: $brick-radius !important;
+  box-shadow: $shadow-brick !important;
+  transition: all $transition-fast !important;
+  overflow: hidden !important;
+
+  &:hover {
+    box-shadow: $shadow-brick-hover !important;
+    transform: translateY(-2px) !important;
+    border-color: $color-primary !important;
+  }
+
+  .el-card__header {
+    background: $color-dark-lighter !important;
+    border-bottom: $brick-border solid $color-dark-border !important;
+    padding: $spacing-md $spacing-lg !important;
+    color: $color-white !important;
+    font-weight: 600 !important;
+  }
+
+  .el-card__body {
+    padding: $spacing-lg !important;
+  }
+}
+
+.el-table {
+  background: $color-dark-light !important;
+  border-radius: $brick-radius !important;
+  overflow: hidden !important;
+
+  .el-table__inner-wrapper::before {
+    display: none !important;
+  }
+
+  th.el-table__cell {
+    background: $color-dark-lighter !important;
+    color: $color-white !important;
+    font-weight: 600 !important;
+    border-bottom: $brick-border solid $color-dark-border !important;
+  }
+
+  td.el-table__cell {
+    background: $color-dark-light !important;
+    color: $color-gray-light !important;
+    border-bottom: 1px solid $color-dark-border !important;
+  }
+
+  .el-table__row {
+    &:hover {
+      td.el-table__cell {
+        background: $color-dark-lighter !important;
+      }
+    }
+  }
+
+  .el-table__empty-block {
+    background: $color-dark-light !important;
+  }
+
+  .el-table__empty-text {
+    color: $color-gray-dark !important;
+  }
+}
+
+.el-pagination {
+  .el-pager li {
+    background: $color-dark-light !important;
+    color: $color-gray-light !important;
+    border-radius: $brick-radius !important;
+    margin: 0 2px !important;
+    border: 1px solid $color-dark-border !important;
+    transition: all $transition-fast !important;
+
+    &:hover {
+      color: $color-primary !important;
+      border-color: $color-primary !important;
+    }
+
+    &.is-active {
+      background: $color-primary !important;
+      color: $color-dark !important;
+      border-color: $color-primary !important;
+      font-weight: 600 !important;
+    }
+  }
+
+  .btn-prev,
+  .btn-next {
+    background: $color-dark-light !important;
+    color: $color-gray-light !important;
+    border-radius: $brick-radius !important;
+    border: 1px solid $color-dark-border !important;
+
+    &:hover {
+      color: $color-primary !important;
+      border-color: $color-primary !important;
+    }
+
+    &:disabled {
+      color: $color-gray-dark !important;
+      border-color: $color-dark-border !important;
+    }
+  }
+}
+
+.el-tag {
+  border-radius: $brick-radius !important;
+  font-weight: 600 !important;
+  border: none !important;
+
+  &.el-tag--primary {
+    background: $color-primary !important;
+    color: $color-dark !important;
+  }
+
+  &.el-tag--success {
+    background: $color-success !important;
+    color: $color-white !important;
+  }
+
+  &.el-tag--warning {
+    background: $color-warning !important;
+    color: $color-white !important;
+  }
+
+  &.el-tag--danger {
+    background: $color-danger !important;
+    color: $color-white !important;
+  }
+
+  &.el-tag--info {
+    background: $color-dark-lighter !important;
+    color: $color-white !important;
+  }
+}
+
+.el-message-box {
+  background: $color-dark-light !important;
+  border: $brick-border solid $color-dark-border !important;
+  border-radius: $brick-radius !important;
+
+  .el-message-box__title {
+    color: $color-white !important;
+  }
+
+  .el-message-box__content {
+    color: $color-gray-light !important;
+  }
+}
+
+.el-message {
+  background: $color-dark-light !important;
+  border: $brick-border solid $color-dark-border !important;
+  border-radius: $brick-radius !important;
+  color: $color-white !important;
+
+  &.el-message--success {
+    border-color: $color-success !important;
+    .el-message__icon {
+      color: $color-success !important;
+    }
+  }
+
+  &.el-message--warning {
+    border-color: $color-warning !important;
+    .el-message__icon {
+      color: $color-warning !important;
+    }
+  }
+
+  &.el-message--error {
+    border-color: $color-danger !important;
+    .el-message__icon {
+      color: $color-danger !important;
+    }
+  }
+
+  &.el-message--info {
+    .el-message__icon {
+      color: $color-info !important;
+    }
+  }
+}
+
+.el-form-item__label {
+  color: $color-gray-light !important;
+  font-weight: 500 !important;
+}
+
+.el-textarea__inner {
+  background: $color-dark !important;
+  border: $brick-border solid $color-dark-border !important;
+  border-radius: $brick-radius !important;
+  color: $color-white !important;
+  transition: all $transition-fast !important;
+
+  &:hover {
+    border-color: $color-dark-lighter !important;
+  }
+
+  &:focus {
+    border-color: $color-primary !important;
+    box-shadow: 0 0 0 3px rgba(255, 214, 0, 0.2) !important;
+  }
+
+  &::placeholder {
+    color: $color-gray-dark !important;
+  }
+}
+
+.el-menu {
+  background: $color-dark-light !important;
+  border-right: $brick-border solid $color-dark-border !important;
+
+  .el-menu-item {
+    color: $color-gray-light !important;
+    transition: all $transition-fast !important;
+    border-radius: $brick-radius !important;
+    margin: 2px 8px !important;
+
+    &:hover {
+      background: $color-dark-lighter !important;
+      color: $color-primary !important;
+    }
+
+    &.is-active {
+      background: $color-primary !important;
+      color: $color-dark !important;
+      font-weight: 600 !important;
+    }
+  }
+
+  .el-sub-menu__title {
+    color: $color-gray-light !important;
+
+    &:hover {
+      background: $color-dark-lighter !important;
+      color: $color-primary !important;
+    }
+  }
+
+  .el-menu--inline {
+    .el-menu-item {
+      margin: 2px 8px 2px 24px !important;
+    }
+  }
+}
+
+.el-tabs {
+  .el-tabs__nav-wrap::after {
+    background-color: $color-dark-border !important;
+  }
+
+  .el-tabs__item {
+    color: $color-gray-light !important;
+    font-weight: 500 !important;
+    transition: all $transition-fast !important;
+
+    &:hover {
+      color: $color-primary !important;
+    }
+
+    &.is-active {
+      color: $color-primary !important;
+      font-weight: 600 !important;
+    }
+  }
+
+  .el-tabs__active-bar {
+    background-color: $color-primary !important;
+  }
+}
+
+.el-upload {
+  .el-upload-dragger {
+    background: $color-dark !important;
+    border: 2px dashed $color-dark-border !important;
+    border-radius: $brick-radius !important;
+    transition: all $transition-fast !important;
+
+    &:hover {
+      border-color: $color-primary !important;
+      background: $color-dark-light !important;
+    }
+
+    .el-upload__text {
+      color: $color-gray-light !important;
+
+      em {
+        color: $color-primary !important;
+        font-style: normal !important;
+      }
+    }
+  }
+}
+
+.el-progress-bar__outer {
+  background: $color-dark !important;
+  border-radius: $brick-radius !important;
+  overflow: hidden !important;
+}
+
+.el-progress-bar__inner {
+  background: $color-primary !important;
+  border-radius: $brick-radius !important;
+}

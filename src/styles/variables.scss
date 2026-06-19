@@ -1,0 +1,43 @@
+$color-primary: #FFD600;
+$color-primary-light: #FFEA00;
+$color-primary-dark: #FFAB00;
+
+$color-dark: #2A2A2A;
+$color-dark-light: #3A3A3A;
+$color-dark-lighter: #4A4A4A;
+$color-dark-border: #5A5A5A;
+
+$color-white: #FFFFFF;
+$color-gray-light: #F5F5F5;
+$color-gray: #E0E0E0;
+$color-gray-dark: #9E9E9E;
+
+$color-success: #4CAF50;
+$color-warning: #FF9800;
+$color-danger: #F44336;
+$color-info: #2196F3;
+
+$brick-radius: 4px;
+$brick-border: 2px;
+
+$shadow-brick: 0 2px 0 rgba(0, 0, 0, 0.2), 0 4px 8px rgba(0, 0, 0, 0.1);
+$shadow-brick-hover: 0 4px 0 rgba(0, 0, 0, 0.2), 0 8px 16px rgba(0, 0, 0, 0.15);
+
+$transition-fast: 0.15s ease;
+$transition-normal: 0.3s ease;
+
+$font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
+$font-size-base: 14px;
+$font-size-lg: 16px;
+$font-size-sm: 12px;
+
+$spacing-xs: 4px;
+$spacing-sm: 8px;
+$spacing-md: 16px;
+$spacing-lg: 24px;
+$spacing-xl: 32px;
+
+$z-index-normal: 1;
+$z-index-dropdown: 1000;
+$z-index-modal: 2000;
+$z-index-tooltip: 3000;
