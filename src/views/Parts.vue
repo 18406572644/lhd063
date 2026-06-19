@@ -1,20 +1,19 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from "vue";
-import { Plus, Edit, Delete, Search, Refresh, Camera, Picture, View } from "@element-plus/icons-vue";
-import { usePartsStore, useMasterDataStore, useAppStore } from "@/stores";
-import type { Part, LocationTreeNode } from "@/types";
+import { Plus, Edit, Delete, Refresh, Camera, Picture, View, Box, Sort, ArrowUp, ArrowDown } from "@element-plus/icons-vue";
+import { usePartsStore, useMasterDataStore, useAppStore, useViewsStore } from "@/stores";
+import type { Part, SavedView, PartFilter } from "@/types";
 import PartDialog from "@/components/PartDialog.vue";
 import PartImageDialog from "@/components/PartImageDialog.vue";
+import FilterPanel from "@/components/FilterPanel.vue";
+import ViewsSidebar from "@/components/ViewsSidebar.vue";
 
 const partsStore = usePartsStore();
 const masterDataStore = useMasterDataStore();
 const appStore = useAppStore();
+const viewsStore = useViewsStore();
 
-const searchKeyword = ref("");
-const filterType = ref("");
-const filterColor = ref("");
-const filterSize = ref("");
-const filterLocation = ref("");
+const currentFilter = ref<PartFilter>(JSON.parse(JSON.stringify(partsStore.filter || {})));
 const dialogVisible = ref(false);
 const viewDialogVisible = ref(false);
 const imageDialogVisible = ref(false);
@@ -23,55 +22,57 @@ const viewingPart = ref<Part | null>(null);
 const imagePartId = ref("");
 const imagePartName = ref("");
 
-const typeOptions = computed(() =>
-  masterDataStore.partTypes.map((t) => ({ label: t.name, value: t.code }))
-);
-
-const colorOptions = computed(() =>
-  masterDataStore.partColors.map((c) => ({ label: c.name, value: c.name }))
-);
-
-const sizeOptions = computed(() =>
-  masterDataStore.partSizes.map((s) => ({ label: s.name, value: s.name }))
-);
-
-const locationTreeOptions = computed(() => {
-  const tree = masterDataStore.buildLocationTree();
-  function toSelectOptions(
-    nodes: LocationTreeNode[]
-  ): { value: string; label: string; children?: any[] }[] {
-    return nodes.map((node) => ({
-      value: node.code,
-      label: node.name,
-      children: node.children?.length
-        ? toSelectOptions(node.children)
-        : undefined,
-    }));
-  }
-  return toSelectOptions(tree);
-});
+const activeViewName = computed(() => viewsStore.activeView?.name || "全部零件");
 
 async function loadData() {
   await Promise.all([partsStore.loadParts(), masterDataStore.loadAll()]);
 }
 
-function handleSearch() {
-  partsStore.setFilter({
-    keyword: searchKeyword.value || undefined,
-    type: filterType.value || undefined,
-    color: filterColor.value || undefined,
-    size: filterSize.value || undefined,
-    location: filterLocation.value || undefined,
-  });
+function onFilterChange(newFilter: PartFilter) {
+  currentFilter.value = JSON.parse(JSON.stringify(newFilter || {}));
+  partsStore.replaceFilter(newFilter);
 }
 
-function handleReset() {
-  searchKeyword.value = "";
-  filterType.value = "";
-  filterColor.value = "";
-  filterSize.value = "";
-  filterLocation.value = "";
+function onFilterSearch() {
+  // reactive computed filters automatically; no-op to trigger anything else
+}
+
+function onFilterReset() {
+  currentFilter.value = {};
   partsStore.clearFilter();
+  if (viewsStore.defaultView) {
+    viewsStore.setActiveView(viewsStore.defaultView.id);
+  }
+}
+
+function handleApplyView(view: SavedView) {
+  partsStore.applyView(view);
+  currentFilter.value = JSON.parse(JSON.stringify(partsStore.filter || {}));
+}
+
+function handleSaveCurrentView() {
+  // placeholder (button in header not wired, sidebar has +)
+}
+
+const sortOptions = [
+  { field: "", label: "默认排序" },
+  { field: "name", label: "名称" },
+  { field: "partNumber", label: "零件编号" },
+  { field: "quantity", label: "库存数量" },
+  { field: "createdAt", label: "创建时间" },
+  { field: "updatedAt", label: "更新时间" },
+];
+
+function toggleSort(field: string) {
+  if (!field) {
+    partsStore.setSort("", "desc");
+    return;
+  }
+  if (partsStore.sortField === field) {
+    partsStore.setSort(field, partsStore.sortOrder === "asc" ? "desc" : "asc");
+  } else {
+    partsStore.setSort(field, "desc");
+  }
 }
 
 function handleAdd() {
@@ -140,16 +141,21 @@ function getLocationName(code: string) {
   return masterDataStore.getLocationName(code);
 }
 
-watch(
-  () => [filterType.value, filterColor.value, filterSize.value, filterLocation.value],
-  () => {
-    handleSearch();
+onMounted(async () => {
+  await loadData();
+  if (viewsStore.activeView) {
+    partsStore.applyView(viewsStore.activeView);
+    currentFilter.value = JSON.parse(JSON.stringify(partsStore.filter || {}));
   }
-);
-
-onMounted(() => {
-  loadData();
 });
+
+watch(
+  () => partsStore.filter,
+  (f) => {
+    currentFilter.value = JSON.parse(JSON.stringify(f || {}));
+  },
+  { deep: true }
+);
 </script>
 
 <template>
@@ -158,9 +164,38 @@ onMounted(() => {
       <h1>
         <span class="brick-stud"></span>
         零件管理
+        <el-tag v-if="activeViewName && activeViewName !== '全部零件'" type="warning" effect="dark" size="small" class="view-tag">
+          {{ activeViewName }}
+        </el-tag>
       </h1>
       <div class="header-actions">
-        <button class="brick-btn brick-btn-sm" @click="loadData">
+        <el-dropdown trigger="click" @command="toggleSort" :visible-arrow="false">
+          <button class="brick-btn brick-btn-sm brick-btn-secondary sort-btn">
+            <el-icon><Sort /></el-icon>
+            <span>{{ partsStore.sortField ? sortOptions.find(o => o.field === partsStore.sortField)?.label : '排序' }}</span>
+            <el-icon v-if="partsStore.sortField">
+              <component :is="partsStore.sortOrder === 'asc' ? ArrowUp : ArrowDown" />
+            </el-icon>
+          </button>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item
+                v-for="opt in sortOptions"
+                :key="opt.field"
+                :command="opt.field"
+              >
+                {{ opt.label }}
+                <span
+                  v-if="opt.field && partsStore.sortField === opt.field"
+                  class="sort-indicator"
+                >
+                  {{ partsStore.sortOrder === 'asc' ? '↑' : '↓' }}
+                </span>
+              </el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
+        <button class="brick-btn brick-btn-sm brick-btn-secondary" @click="loadData">
           <el-icon><Refresh /></el-icon>
           刷新
         </button>
@@ -171,226 +206,150 @@ onMounted(() => {
       </div>
     </div>
 
-    <div class="page-content">
-      <div class="filter-section brick-card">
-        <div class="filter-row">
-          <div class="filter-item">
-            <el-input
-              v-model="searchKeyword"
-              placeholder="搜索零件名称/编号..."
-              class="brick-input"
-              clearable
-              @keyup.enter="handleSearch"
-            >
-              <template #prefix>
-                <el-icon><Search /></el-icon>
-              </template>
-            </el-input>
+    <div class="page-content-with-sidebar">
+      <ViewsSidebar
+        :current-filter="currentFilter"
+        :current-sort-field="partsStore.sortField"
+        :current-sort-order="partsStore.sortOrder"
+        @apply-view="handleApplyView"
+        @save-current="handleSaveCurrentView"
+      />
+
+      <div class="page-content-main">
+        <FilterPanel
+          :model-value="currentFilter"
+          @update:modelValue="onFilterChange"
+          @search="onFilterSearch"
+          @reset="onFilterReset"
+        />
+
+        <div class="stats-bar">
+          <div class="stat-item">
+            <span class="stat-label">零件种类</span>
+            <span class="stat-value">{{ partsStore.filteredParts.length }}</span>
           </div>
-          <div class="filter-item">
-            <el-select
-              v-model="filterType"
-              placeholder="零件类型"
-              clearable
-              class="w-full"
-            >
-              <el-option
-                v-for="opt in typeOptions"
-                :key="opt.value"
-                :label="opt.label"
-                :value="opt.value"
-              />
-            </el-select>
+          <div class="stat-item">
+            <span class="stat-label">零件总数</span>
+            <span class="stat-value">{{ partsStore.totalQuantity }}</span>
           </div>
-          <div class="filter-item">
-            <el-select
-              v-model="filterColor"
-              placeholder="颜色"
-              clearable
-              class="w-full"
-            >
-              <el-option
-                v-for="opt in colorOptions"
-                :key="opt.value"
-                :label="opt.label"
-                :value="opt.value"
-              >
-                <span class="color-option">
-                  <span
-                    class="color-dot"
-                    :style="{ backgroundColor: getColorHex(opt.value) }"
-                  ></span>
-                  {{ opt.label }}
-                </span>
-              </el-option>
-            </el-select>
-          </div>
-          <div class="filter-item">
-            <el-select
-              v-model="filterSize"
-              placeholder="尺寸"
-              clearable
-              class="w-full"
-            >
-              <el-option
-                v-for="opt in sizeOptions"
-                :key="opt.value"
-                :label="opt.label"
-                :value="opt.value"
-              />
-            </el-select>
-          </div>
-          <div class="filter-item">
-            <el-tree-select
-              v-model="filterLocation"
-              :data="locationTreeOptions"
-              placeholder="存放位置"
-              clearable
-              check-strictly
-              :render-after-expand="false"
-              class="w-full"
-            />
-          </div>
-          <div class="filter-item filter-actions">
-            <button class="brick-btn brick-btn-sm" @click="handleSearch">
-              搜索
-            </button>
-            <button
-              class="brick-btn brick-btn-sm brick-btn-secondary"
-              @click="handleReset"
-            >
-              重置
-            </button>
+          <div class="stat-item">
+            <span class="stat-label">低库存</span>
+            <span class="stat-value stat-warning">
+              {{ partsStore.lowStockParts.length }}
+            </span>
           </div>
         </div>
-      </div>
 
-      <div class="stats-bar">
-        <div class="stat-item">
-          <span class="stat-label">零件种类</span>
-          <span class="stat-value">{{ partsStore.filteredParts.length }}</span>
+        <div v-if="partsStore.filteredParts.length === 0" class="empty-state">
+          <el-icon class="empty-icon"><Box /></el-icon>
+          <div class="empty-text">暂无零件数据</div>
+          <div class="empty-desc">点击「新增零件」开始添加你的乐高零件，或调整筛选条件</div>
         </div>
-        <div class="stat-item">
-          <span class="stat-label">零件总数</span>
-          <span class="stat-value">{{ partsStore.totalQuantity }}</span>
-        </div>
-        <div class="stat-item">
-          <span class="stat-label">低库存</span>
-          <span class="stat-value stat-warning">
-            {{ partsStore.lowStockParts.length }}
-          </span>
-        </div>
-      </div>
 
-      <div v-if="partsStore.filteredParts.length === 0" class="empty-state">
-        <el-icon class="empty-icon"><Box /></el-icon>
-        <div class="empty-text">暂无零件数据</div>
-        <div class="empty-desc">点击「新增零件」开始添加你的乐高零件</div>
-      </div>
-
-      <div v-else class="grid-container">
-        <div
-          v-for="part in partsStore.filteredParts"
-          :key="part.id"
-          class="part-card brick-card"
-        >
-          <div class="part-header">
-            <div class="part-title">
-              <span
-                class="color-indicator"
-                :style="{ backgroundColor: getColorHex(part.color) }"
-              ></span>
-              <h3>{{ part.name }}</h3>
-            </div>
-            <div class="part-actions">
-              <button
-                class="icon-btn"
-                @click="handleView(part)"
-                title="查看详情"
-              >
-                <el-icon><View /></el-icon>
-              </button>
-              <button
-                class="icon-btn"
-                @click="handleImage(part)"
-                title="管理图片"
-              >
-                <el-icon><Camera /></el-icon>
-              </button>
-              <button
-                class="icon-btn"
-                @click="handleEdit(part)"
-                title="编辑"
-              >
-                <el-icon><Edit /></el-icon>
-              </button>
-              <button
-                class="icon-btn icon-btn-danger"
-                @click="handleDelete(part)"
-                title="删除"
-              >
-                <el-icon><Delete /></el-icon>
-              </button>
-            </div>
-          </div>
-
-          <div class="part-number">#{{ part.partNumber }}</div>
-
-          <div class="part-info">
-            <div class="info-row">
-              <span class="info-label">类型</span>
-              <span class="info-value">{{ getTypeName(part.type) }}</span>
-            </div>
-            <div class="info-row">
-              <span class="info-label">颜色</span>
-              <span class="info-value">
+        <div v-else class="grid-container">
+          <div
+            v-for="part in partsStore.filteredParts"
+            :key="part.id"
+            class="part-card brick-card"
+          >
+            <div class="part-header">
+              <div class="part-title">
                 <span
-                  class="color-dot-small"
+                  class="color-indicator"
                   :style="{ backgroundColor: getColorHex(part.color) }"
                 ></span>
-                {{ part.color }}
-              </span>
+                <h3>{{ part.name }}</h3>
+              </div>
+              <div class="part-actions">
+                <button
+                  class="icon-btn"
+                  @click="handleView(part)"
+                  title="查看详情"
+                >
+                  <el-icon><View /></el-icon>
+                </button>
+                <button
+                  class="icon-btn"
+                  @click="handleImage(part)"
+                  title="管理图片"
+                >
+                  <el-icon><Camera /></el-icon>
+                </button>
+                <button
+                  class="icon-btn"
+                  @click="handleEdit(part)"
+                  title="编辑"
+                >
+                  <el-icon><Edit /></el-icon>
+                </button>
+                <button
+                  class="icon-btn icon-btn-danger"
+                  @click="handleDelete(part)"
+                  title="删除"
+                >
+                  <el-icon><Delete /></el-icon>
+                </button>
+              </div>
             </div>
-            <div class="info-row">
-              <span class="info-label">尺寸</span>
-              <span class="info-value">{{ part.size }}</span>
-            </div>
-            <div class="info-row">
-              <span class="info-label">位置</span>
-              <span class="info-value">{{ getLocationName(part.location) }}</span>
-            </div>
-          </div>
 
-          <div class="part-footer">
-            <div class="quantity-section">
-              <span class="quantity-label">库存</span>
-              <span
-                class="quantity-value"
-                :class="{ 'low-stock': part.quantity <= 5 }"
+            <div class="part-number">#{{ part.partNumber }}</div>
+
+            <div class="part-info">
+              <div class="info-row">
+                <span class="info-label">类型</span>
+                <span class="info-value">{{ getTypeName(part.type) }}</span>
+              </div>
+              <div class="info-row">
+                <span class="info-label">颜色</span>
+                <span class="info-value">
+                  <span
+                    class="color-dot-small"
+                    :style="{ backgroundColor: getColorHex(part.color) }"
+                  ></span>
+                  {{ part.color }}
+                </span>
+              </div>
+              <div class="info-row">
+                <span class="info-label">尺寸</span>
+                <span class="info-value">{{ part.size }}</span>
+              </div>
+              <div class="info-row">
+                <span class="info-label">位置</span>
+                <span class="info-value">{{ getLocationName(part.location) }}</span>
+              </div>
+            </div>
+
+            <div class="part-footer">
+              <div class="quantity-section">
+                <span class="quantity-label">库存</span>
+                <span
+                  class="quantity-value"
+                  :class="{ 'low-stock': part.quantity <= 5 }"
+                >
+                  {{ part.quantity }}
+                </span>
+              </div>
+              <el-tag
+                v-if="part.quantity <= 5"
+                type="danger"
+                effect="dark"
+                size="small"
               >
-                {{ part.quantity }}
-              </span>
+                库存不足
+              </el-tag>
+              <el-tag v-else type="success" effect="dark" size="small">
+                充足
+              </el-tag>
             </div>
-            <el-tag
-              v-if="part.quantity <= 5"
-              type="danger"
-              effect="dark"
-              size="small"
-            >
-              库存不足
-            </el-tag>
-            <el-tag v-else type="success" effect="dark" size="small">
-              充足
-            </el-tag>
-          </div>
 
-          <div v-if="part.description" class="part-description">
-            {{ part.description }}
-          </div>
+            <div v-if="part.description" class="part-description">
+              {{ part.description }}
+            </div>
 
-          <div v-if="part.imagePath" class="part-image-preview">
-            <el-icon><Picture /></el-icon>
-            已上传图片
+            <div v-if="part.imagePath" class="part-image-preview">
+              <el-icon><Picture /></el-icon>
+              已上传图片
+            </div>
           </div>
         </div>
       </div>
@@ -420,27 +379,6 @@ onMounted(() => {
 <style scoped lang="scss">
 @use "@/styles/variables.scss" as *;
 
-.filter-section {
-  padding: $spacing-lg;
-  margin-bottom: $spacing-lg;
-}
-
-.filter-row {
-  display: grid;
-  grid-template-columns: 2fr 1fr 1fr 1fr 1fr auto;
-  gap: $spacing-md;
-  align-items: end;
-}
-
-.filter-item {
-  min-width: 0;
-}
-
-.filter-actions {
-  display: flex;
-  gap: $spacing-sm;
-}
-
 .stats-bar {
   display: flex;
   gap: $spacing-lg;
@@ -469,6 +407,31 @@ onMounted(() => {
       color: $color-danger;
     }
   }
+}
+
+.page-content-with-sidebar {
+  display: flex;
+  gap: $spacing-lg;
+  align-items: flex-start;
+}
+
+.page-content-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.view-tag {
+  margin-left: $spacing-sm;
+}
+
+.sort-btn {
+  gap: $spacing-xs;
+}
+
+.sort-indicator {
+  margin-left: auto;
+  color: $color-primary;
+  font-weight: 700;
 }
 
 .part-card {
@@ -509,15 +472,6 @@ onMounted(() => {
   border-radius: 50%;
   border: 2px solid $color-dark-border;
   flex-shrink: 0;
-}
-
-.color-dot {
-  display: inline-block;
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  margin-right: $spacing-xs;
-  vertical-align: middle;
 }
 
 .color-dot-small {
@@ -637,13 +591,41 @@ onMounted(() => {
   padding-top: $spacing-sm;
 }
 
-@media (max-width: 1200px) {
-  .filter-row {
-    grid-template-columns: 1fr 1fr;
+.grid-container {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: $spacing-md;
+}
+
+.empty-state {
+  padding: $spacing-xl * 2;
+  text-align: center;
+  background: $color-dark-light;
+  border: $brick-border dashed $color-dark-border;
+  border-radius: $brick-radius;
+
+  .empty-icon {
+    font-size: 64px;
+    color: $color-gray-dark;
+    margin-bottom: $spacing-md;
   }
 
-  .filter-actions {
-    grid-column: span 2;
+  .empty-text {
+    font-size: $font-size-lg;
+    font-weight: 600;
+    color: $color-white;
+    margin-bottom: $spacing-xs;
+  }
+
+  .empty-desc {
+    font-size: $font-size-sm;
+    color: $color-gray-dark;
+  }
+}
+
+@media (max-width: 1200px) {
+  .page-content-with-sidebar {
+    flex-direction: column;
   }
 }
 </style>
