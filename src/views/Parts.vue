@@ -2,7 +2,7 @@
 import { ref, computed, onMounted, watch } from "vue";
 import { Plus, Edit, Delete, Search, Refresh, Camera, Picture } from "@element-plus/icons-vue";
 import { usePartsStore, useMasterDataStore, useAppStore } from "@/stores";
-import type { Part } from "@/types";
+import type { Part, LocationTreeNode } from "@/types";
 import PartDialog from "@/components/PartDialog.vue";
 import PartImageDialog from "@/components/PartImageDialog.vue";
 
@@ -33,9 +33,21 @@ const sizeOptions = computed(() =>
   masterDataStore.partSizes.map((s) => ({ label: s.name, value: s.name }))
 );
 
-const locationOptions = computed(() =>
-  masterDataStore.locations.map((l) => ({ label: l.name, value: l.code }))
-);
+const locationTreeOptions = computed(() => {
+  const tree = masterDataStore.buildLocationTree();
+  function toSelectOptions(
+    nodes: LocationTreeNode[]
+  ): { value: string; label: string; children?: any[] }[] {
+    return nodes.map((node) => ({
+      value: node.code,
+      label: node.name,
+      children: node.children?.length
+        ? toSelectOptions(node.children)
+        : undefined,
+    }));
+  }
+  return toSelectOptions(tree);
+});
 
 async function loadData() {
   await Promise.all([partsStore.loadParts(), masterDataStore.loadAll()]);
@@ -214,19 +226,15 @@ onMounted(() => {
             </el-select>
           </div>
           <div class="filter-item">
-            <el-select
+            <el-tree-select
               v-model="filterLocation"
+              :data="locationTreeOptions"
               placeholder="存放位置"
               clearable
+              check-strictly
+              :render-after-expand="false"
               class="w-full"
-            >
-              <el-option
-                v-for="opt in locationOptions"
-                :key="opt.value"
-                :label="opt.label"
-                :value="opt.value"
-              />
-            </el-select>
+            />
           </div>
           <div class="filter-item filter-actions">
             <button class="brick-btn brick-btn-sm" @click="handleSearch">

@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { ref, onMounted } from "vue";
-import { Plus, Edit, Delete, Refresh } from "@element-plus/icons-vue";
+import { ref, computed, onMounted } from "vue";
+import { Plus, Edit, Delete, Refresh, Rank } from "@element-plus/icons-vue";
 import { useMasterDataStore, useAppStore } from "@/stores";
-import type { PartType, PartColor, PartSize, Location } from "@/types";
+import type { PartType, PartColor, PartSize, Location, LocationTreeNode } from "@/types";
 
 const masterDataStore = useMasterDataStore();
 const appStore = useAppStore();
@@ -42,6 +42,71 @@ const locationForm = ref({
   description: "",
   parentId: undefined as string | undefined,
 });
+
+const locationTreeData = computed(() => masterDataStore.buildLocationTree());
+
+const locationParentOptions = computed(() => {
+  const tree = masterDataStore.buildLocationTree();
+  const options: { id: string; name: string; code: string; depth: number }[] = [];
+  function walk(nodes: LocationTreeNode[], depth: number) {
+    for (const node of nodes) {
+      if (!editingLocation.value || node.id !== editingLocation.value.id) {
+        options.push({ id: node.id, name: node.name, code: node.code, depth });
+        if (node.children?.length) walk(node.children, depth + 1);
+      }
+    }
+  }
+  walk(tree, 0);
+  return options;
+});
+
+function isDescendant(locationId: string, potentialAncestorId: string): boolean {
+  const loc = masterDataStore.locations.find((l) => l.id === locationId);
+  if (!loc) return false;
+  let current: Location | undefined = loc;
+  while (current?.parentId) {
+    if (current.parentId === potentialAncestorId) return true;
+    current = masterDataStore.locations.find((l) => l.id === current!.parentId);
+  }
+  return false;
+}
+
+const expandAll = ref(true);
+
+function toggleExpand() {
+  expandAll.value = !expandAll.value;
+}
+
+async function handleLocationDragEnd(
+  draggingNode: { data: LocationTreeNode },
+  dropNode: { data: LocationTreeNode },
+  dropType: string
+) {
+  if (dropType === "inner") {
+    if (isDescendant(dropNode.data.id, draggingNode.data.id)) {
+      appStore.showError("不能将位置移动到其子位置下");
+      return;
+    }
+    const location = masterDataStore.locations.find((l) => l.id === draggingNode.data.id);
+    if (location) {
+      await masterDataStore.updateLocation({
+        ...location,
+        parentId: dropNode.data.id,
+      });
+      appStore.showSuccess(`已将「${draggingNode.data.name}」移至「${dropNode.data.name}」下`);
+    }
+  } else if (dropType === "before" || dropType === "after") {
+    const dropLoc = masterDataStore.locations.find((l) => l.id === dropNode.data.id);
+    const dragLoc = masterDataStore.locations.find((l) => l.id === draggingNode.data.id);
+    if (dragLoc && dropLoc) {
+      await masterDataStore.updateLocation({
+        ...dragLoc,
+        parentId: dropLoc.parentId || undefined,
+      });
+      appStore.showSuccess(`已调整「${draggingNode.data.name}」的位置`);
+    }
+  }
+}
 
 async function loadData() {
   await masterDataStore.loadAll();
@@ -265,10 +330,14 @@ async function saveLocation() {
 }
 
 async function deleteLocation(location: Location) {
-  const confirmed = await appStore.showConfirm(
-    `确定要删除位置「${location.name}」吗？`,
-    "删除位置"
-  );
+  const childCount = masterDataStore.locations.filter(
+    (l) => l.parentId === location.id
+  ).length;
+  const msg =
+    childCount > 0
+      ? `确定要删除位置「${location.name}」吗？其 ${childCount} 个子位置将变为顶级位置。`
+      : `确定要删除位置「${location.name}」吗？`;
+  const confirmed = await appStore.showConfirm(msg, "删除位置");
   if (confirmed) {
     await masterDataStore.deleteLocation(location.id);
     appStore.showSuccess("删除成功");
@@ -441,45 +510,85 @@ onMounted(() => {
 
           <el-tab-pane label="存放位置" name="locations">
             <div class="tab-header">
-              <span class="tab-desc">管理零件的存放位置</span>
-              <button
-                class="brick-btn brick-btn-sm"
-                @click="openLocationDialog()"
-              >
-                <el-icon><Plus /></el-icon>
-                添加位置
-              </button>
-            </div>
-            <div class="data-grid">
-              <div
-                v-for="location in masterDataStore.locations"
-                :key="location.id"
-                class="data-item"
-              >
-                <div class="item-info">
-                  <div class="item-name">{{ location.name }}</div>
-                  <div class="item-code">{{ location.code }}</div>
-                  <div v-if="location.description" class="item-desc">
-                    {{ location.description }}
-                  </div>
-                </div>
-                <div class="item-actions">
-                  <button
-                    class="icon-btn"
-                    @click="openLocationDialog(location)"
-                    title="编辑"
-                  >
-                    <el-icon><Edit /></el-icon>
-                  </button>
-                  <button
-                    class="icon-btn icon-btn-danger"
-                    @click="deleteLocation(location)"
-                    title="删除"
-                  >
-                    <el-icon><Delete /></el-icon>
-                  </button>
-                </div>
+              <span class="tab-desc">管理零件的存放位置（支持拖拽调整层级）</span>
+              <div class="tab-header-actions">
+                <button
+                  class="brick-btn brick-btn-sm brick-btn-secondary"
+                  @click="toggleExpand"
+                >
+                  <el-icon><Rank /></el-icon>
+                  {{ expandAll ? '折叠全部' : '展开全部' }}
+                </button>
+                <button
+                  class="brick-btn brick-btn-sm"
+                  @click="openLocationDialog()"
+                >
+                  <el-icon><Plus /></el-icon>
+                  添加位置
+                </button>
               </div>
+            </div>
+            <div class="location-tree-container">
+              <div v-if="locationTreeData.length === 0" class="empty-tree">
+                暂无位置数据，点击「添加位置」开始创建
+              </div>
+              <el-tree
+                v-else
+                :data="locationTreeData"
+                :props="{ label: 'name', children: 'children' }"
+                node-key="id"
+                :default-expand-all="expandAll"
+                draggable
+                :allow-drop="(
+                  _draggingNode: any,
+                  dropNode: any,
+                  type: string
+                ) => {
+                  if (type === 'inner') {
+                    return !isDescendant(dropNode.data.id, _draggingNode.data.id);
+                  }
+                  return true;
+                }"
+                @node-drop="handleLocationDragEnd"
+                class="location-tree"
+              >
+                <template #default="{ data }">
+                  <div class="location-tree-node">
+                    <div class="location-node-info">
+                      <span class="location-node-name">{{ data.name }}</span>
+                      <span class="location-node-code">{{ data.code }}</span>
+                      <span
+                        v-if="data.description"
+                        class="location-node-desc"
+                      >
+                        {{ data.description }}
+                      </span>
+                      <span
+                        v-if="data.children?.length"
+                        class="location-node-badge"
+                      >
+                        {{ data.children.length }} 子位置
+                      </span>
+                    </div>
+                    <div class="location-node-actions">
+                      <button
+                        class="icon-btn"
+                        @click.stop="openLocationDialog(data)"
+                        title="编辑"
+                      >
+                        <el-icon><Edit /></el-icon>
+                      </button>
+                      <button
+                        class="icon-btn icon-btn-danger"
+                        @click.stop="deleteLocation(data)"
+                        title="删除"
+                      >
+                        <el-icon><Delete /></el-icon>
+                      </button>
+                    </div>
+                  </div>
+                </template>
+              </el-tree>
             </div>
           </el-tab-pane>
         </el-tabs>
@@ -579,7 +688,7 @@ onMounted(() => {
     <el-dialog
       v-model="locationDialogVisible"
       :title="editingLocation ? '编辑位置' : '添加位置'"
-      width="420px"
+      width="480px"
     >
       <el-form label-width="80px">
         <el-form-item label="名称">
@@ -587,6 +696,25 @@ onMounted(() => {
         </el-form-item>
         <el-form-item label="编码">
           <el-input v-model="locationForm.code" placeholder="如: BOX_A" />
+        </el-form-item>
+        <el-form-item label="上级位置">
+          <el-tree-select
+            v-model="locationForm.parentId"
+            :data="locationParentOptions.map(opt => ({
+              value: opt.id,
+              label: opt.name,
+              disabled: editingLocation ? isDescendant(opt.id, editingLocation.id) : false
+            }))"
+            placeholder="无（顶级位置）"
+            clearable
+            check-strictly
+            :render-after-expand="false"
+            class="w-full"
+          >
+            <template #default="{ data }">
+              <span :style="{ paddingLeft: '0px' }">{{ data.label }}</span>
+            </template>
+          </el-tree-select>
         </el-form-item>
         <el-form-item label="描述">
           <el-input
@@ -638,6 +766,104 @@ onMounted(() => {
   .tab-desc {
     font-size: $font-size-sm;
     color: $color-gray-dark;
+  }
+}
+
+.tab-header-actions {
+  display: flex;
+  gap: $spacing-sm;
+}
+
+.location-tree-container {
+  padding: $spacing-lg;
+  min-height: 200px;
+}
+
+.empty-tree {
+  text-align: center;
+  color: $color-gray-dark;
+  padding: $spacing-xl 0;
+}
+
+.location-tree {
+  background: transparent;
+
+  :deep(.el-tree-node__content) {
+    height: auto;
+    padding: $spacing-sm 0;
+    background: transparent !important;
+
+    &:hover {
+      background: $color-dark-lighter !important;
+    }
+  }
+
+  :deep(.el-tree-node__expand-icon) {
+    color: $color-gray-dark;
+  }
+
+  :deep(.el-tree-node.is-drop-inner > .el-tree-node__content) {
+    background: rgba($color-primary, 0.2) !important;
+  }
+
+  :deep(.el-tree-node.is-current > .el-tree-node__content) {
+    background: transparent;
+  }
+}
+
+.location-tree-node {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex: 1;
+  padding: $spacing-xs $spacing-sm;
+  min-width: 0;
+
+  .location-node-info {
+    display: flex;
+    align-items: center;
+    gap: $spacing-sm;
+    flex: 1;
+    min-width: 0;
+  }
+
+  .location-node-name {
+    font-weight: 600;
+    color: $color-white;
+  }
+
+  .location-node-code {
+    font-size: $font-size-sm;
+    color: $color-primary;
+    font-family: monospace;
+  }
+
+  .location-node-desc {
+    font-size: $font-size-sm;
+    color: $color-gray-dark;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .location-node-badge {
+    font-size: $font-size-xs;
+    color: $color-info;
+    background: rgba($color-info, 0.15);
+    padding: 2px 8px;
+    border-radius: 10px;
+    white-space: nowrap;
+  }
+
+  .location-node-actions {
+    display: flex;
+    gap: $spacing-xs;
+    opacity: 0;
+    transition: opacity $transition-fast;
+  }
+
+  &:hover .location-node-actions {
+    opacity: 1;
   }
 }
 

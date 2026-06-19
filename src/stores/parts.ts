@@ -2,6 +2,7 @@ import { defineStore } from "pinia";
 import { ref, computed } from "vue";
 import { api } from "@/api";
 import type { Part, PartFilter } from "@/types";
+import { useMasterDataStore } from "./masterData";
 
 export const usePartsStore = defineStore("parts", () => {
   const parts = ref<Part[]>([]);
@@ -21,7 +22,11 @@ export const usePartsStore = defineStore("parts", () => {
       result = result.filter((p) => p.size === filter.value.size);
     }
     if (filter.value.location) {
-      result = result.filter((p) => p.location === filter.value.location);
+      const masterDataStore = useMasterDataStore();
+      const locationCodes = masterDataStore.getAllChildLocationCodesByCode(
+        filter.value.location
+      );
+      result = result.filter((p) => locationCodes.includes(p.location));
     }
     if (filter.value.keyword) {
       const keyword = filter.value.keyword.toLowerCase();

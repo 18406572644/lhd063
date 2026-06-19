@@ -1,7 +1,7 @@
 import { defineStore } from "pinia";
 import { ref } from "vue";
 import { api } from "@/api";
-import type { PartType, PartColor, PartSize, Location } from "@/types";
+import type { PartType, PartColor, PartSize, Location, LocationTreeNode } from "@/types";
 
 export const useMasterDataStore = defineStore("masterData", () => {
   const partTypes = ref<PartType[]>([]);
@@ -140,6 +140,56 @@ export const useMasterDataStore = defineStore("masterData", () => {
     return locations.value.find((l) => l.code === code)?.name || code;
   }
 
+  function buildLocationTree(): LocationTreeNode[] {
+    const list = locations.value;
+    const map = new Map<string, LocationTreeNode>();
+    const roots: LocationTreeNode[] = [];
+
+    for (const loc of list) {
+      map.set(loc.id, { ...loc, children: [] });
+    }
+
+    for (const loc of list) {
+      const node = map.get(loc.id)!;
+      if (loc.parentId && map.has(loc.parentId)) {
+        map.get(loc.parentId)!.children!.push(node);
+      } else {
+        roots.push(node);
+      }
+    }
+
+    return roots;
+  }
+
+  function getAllChildLocationCodes(parentId: string): string[] {
+    const parent = locations.value.find((l) => l.id === parentId);
+    if (!parent) return [];
+    const codes = [parent.code];
+    const children = locations.value.filter((l) => l.parentId === parentId);
+    for (const child of children) {
+      codes.push(...getAllChildLocationCodes(child.id));
+    }
+    return codes;
+  }
+
+  function getAllChildLocationCodesByCode(code: string): string[] {
+    const loc = locations.value.find((l) => l.code === code);
+    if (!loc) return [code];
+    return getAllChildLocationCodes(loc.id);
+  }
+
+  function getLocationAncestors(locationId: string): Location[] {
+    const result: Location[] = [];
+    let current = locations.value.find((l) => l.id === locationId);
+    while (current) {
+      result.unshift(current);
+      current = current.parentId
+        ? locations.value.find((l) => l.id === current!.parentId)
+        : undefined;
+    }
+    return result;
+  }
+
   return {
     partTypes,
     partColors,
@@ -168,5 +218,9 @@ export const useMasterDataStore = defineStore("masterData", () => {
     getPartColorHex,
     getPartSizeName,
     getLocationName,
+    buildLocationTree,
+    getAllChildLocationCodes,
+    getAllChildLocationCodesByCode,
+    getLocationAncestors,
   };
 });

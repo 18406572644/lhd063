@@ -185,6 +185,9 @@ function getMockData(command: string, args?: Record<string, unknown>): unknown {
     { id: "3", name: "抽屉 1", code: "DRAWER_1", description: "工作台抽屉1" },
     { id: "4", name: "抽屉 2", code: "DRAWER_2", description: "工作台抽屉2" },
     { id: "5", name: "展示架", code: "DISPLAY", description: "展示架上的模型" },
+    { id: "6", name: "A1 格", code: "BOX_A_1", description: "收纳盒A - 格1", parentId: "1" },
+    { id: "7", name: "A2 格", code: "BOX_A_2", description: "收纳盒A - 格2", parentId: "1" },
+    { id: "8", name: "B1 格", code: "BOX_B_1", description: "收纳盒B - 格1", parentId: "2" },
   ];
 
   const mockMocs: MocList[] = [

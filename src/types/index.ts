@@ -43,6 +43,15 @@ export interface Location {
   parentId?: string;
 }
 
+export interface LocationTreeNode {
+  id: string;
+  name: string;
+  code: string;
+  description?: string;
+  parentId?: string;
+  children?: LocationTreeNode[];
+}
+
 export type MocStatus =
   | "planning"
   | "purchasing"
@@ -149,4 +158,6 @@ export interface ColorCount {
 export interface LocationCount {
   name: string;
   count: number;
+  code?: string;
+  children?: LocationCount[];
 }

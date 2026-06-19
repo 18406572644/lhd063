@@ -3,7 +3,7 @@ import { ref, computed, watch, onMounted } from "vue";
 import { ElForm, ElFormItem } from "element-plus";
 import type { FormInstance, FormRules } from "element-plus";
 import { useMasterDataStore } from "@/stores";
-import type { Part } from "@/types";
+import type { Part, LocationTreeNode } from "@/types";
 
 const props = defineProps<{
   modelValue: boolean;
@@ -61,9 +61,21 @@ const sizeOptions = computed(() =>
   masterDataStore.partSizes.map((s) => ({ label: s.name, value: s.name }))
 );
 
-const locationOptions = computed(() =>
-  masterDataStore.locations.map((l) => ({ label: l.name, value: l.code }))
-);
+const locationTreeOptions = computed(() => {
+  const tree = masterDataStore.buildLocationTree();
+  function toSelectOptions(
+    nodes: LocationTreeNode[]
+  ): { value: string; label: string; children?: any[] }[] {
+    return nodes.map((node) => ({
+      value: node.code,
+      label: node.name,
+      children: node.children?.length
+        ? toSelectOptions(node.children)
+        : undefined,
+    }));
+  }
+  return toSelectOptions(tree);
+});
 
 const dialogTitle = computed(() =>
   props.part ? "编辑零件" : "新增零件"
@@ -252,18 +264,14 @@ onMounted(() => {
       </el-row>
 
       <el-form-item label="存放位置" prop="location">
-        <el-select
+        <el-tree-select
           v-model="formData.location"
+          :data="locationTreeOptions"
           placeholder="请选择存放位置"
+          check-strictly
+          :render-after-expand="false"
           class="w-full"
-        >
-          <el-option
-            v-for="opt in locationOptions"
-            :key="opt.value"
-            :label="opt.label"
-            :value="opt.value"
-          />
-        </el-select>
+        />
       </el-form-item>
 
       <el-form-item label="备注说明">
