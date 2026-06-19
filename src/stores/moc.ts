@@ -42,68 +42,91 @@ export const useMocStore = defineStore("moc", () => {
   async function loadMocLists() {
     loading.value = true;
     try {
-      mocLists.value = await api.getMocLists();
+      const response = await api.getMocLists();
+      if (response.success) {
+        mocLists.value = response.data;
+      }
     } finally {
       loading.value = false;
     }
   }
 
   async function loadMocById(id: string) {
-    currentMoc.value = await api.getMocListById(id);
+    const response = await api.getMocListById(id);
+    if (response.success) {
+      currentMoc.value = response.data;
+    }
     return currentMoc.value;
   }
 
   async function compareInventory(id: string) {
-    currentMoc.value = await api.compareMocInventory(id);
+    const response = await api.compareMocInventory(id);
+    if (response.success) {
+      currentMoc.value = response.data;
+    }
     const index = mocLists.value.findIndex((m) => m.id === id);
-    if (index !== -1) {
-      mocLists.value[index] = currentMoc.value;
+    if (response.success && index !== -1) {
+      mocLists.value[index] = response.data;
     }
     return currentMoc.value;
   }
 
   async function addMocList(moc: Omit<MocList, "id" | "createdAt" | "updatedAt">) {
-    const newMoc = await api.createMocList(moc);
-    mocLists.value.push(newMoc);
-    return newMoc;
+    const response = await api.createMocList(moc);
+    if (response.success) {
+      mocLists.value.push(response.data);
+      return response.data;
+    }
+    return undefined;
   }
 
   async function updateMocList(moc: MocList) {
-    const updated = await api.updateMocList(moc);
-    const index = mocLists.value.findIndex((m) => m.id === moc.id);
-    if (index !== -1) {
-      mocLists.value[index] = updated;
+    const response = await api.updateMocList(moc);
+    if (response.success) {
+      const index = mocLists.value.findIndex((m) => m.id === moc.id);
+      if (index !== -1) {
+        mocLists.value[index] = response.data;
+      }
+      if (currentMoc.value?.id === moc.id) {
+        currentMoc.value = response.data;
+      }
+      return response.data;
     }
-    if (currentMoc.value?.id === moc.id) {
-      currentMoc.value = updated;
-    }
-    return updated;
+    return undefined;
   }
 
   async function deleteMocList(id: string) {
-    await api.deleteMocList(id);
-    mocLists.value = mocLists.value.filter((m) => m.id !== id);
-    if (currentMoc.value?.id === id) {
-      currentMoc.value = null;
+    const response = await api.deleteMocList(id);
+    if (response.success) {
+      mocLists.value = mocLists.value.filter((m) => m.id !== id);
+      if (currentMoc.value?.id === id) {
+        currentMoc.value = null;
+      }
     }
   }
 
   async function changeMocStatus(mocId: string, newStatus: MocStatus, remark?: string) {
-    const updated = await api.changeMocStatus({ mocId, newStatus, remark });
-    const index = mocLists.value.findIndex((m) => m.id === mocId);
-    if (index !== -1) {
-      mocLists.value[index] = updated;
+    const response = await api.changeMocStatus({ mocId, newStatus, remark });
+    if (response.success) {
+      const index = mocLists.value.findIndex((m) => m.id === mocId);
+      if (index !== -1) {
+        mocLists.value[index] = response.data;
+      }
+      if (currentMoc.value?.id === mocId) {
+        currentMoc.value = response.data;
+      }
+      return response.data;
     }
-    if (currentMoc.value?.id === mocId) {
-      currentMoc.value = updated;
-    }
-    return updated;
+    return undefined;
   }
 
   async function loadStatusLogs(mocId: string) {
     statusLogsLoading.value = true;
     try {
-      statusLogs.value = await api.getMocStatusLogs(mocId);
+      const response = await api.getMocStatusLogs(mocId);
+      if (response.success) {
+        statusLogs.value = response.data;
+      }
     } finally {
       statusLogsLoading.value = false;
     }
@@ -114,25 +137,31 @@ export const useMocStore = defineStore("moc", () => {
   }
 
   async function saveMocCoverImage(mocId: string, imageData: string) {
-    const path = await api.saveMocCoverImage(mocId, imageData);
-    const index = mocLists.value.findIndex((m) => m.id === mocId);
-    if (index !== -1) {
-      mocLists.value[index] = { ...mocLists.value[index], coverImagePath: path };
+    const response = await api.saveMocCoverImage(mocId, imageData);
+    if (response.success) {
+      const path = response.data;
+      const index = mocLists.value.findIndex((m) => m.id === mocId);
+      if (index !== -1) {
+        mocLists.value[index] = { ...mocLists.value[index], coverImagePath: path };
+      }
+      if (currentMoc.value?.id === mocId) {
+        currentMoc.value = { ...currentMoc.value, coverImagePath: path };
+      }
+      return path;
     }
-    if (currentMoc.value?.id === mocId) {
-      currentMoc.value = { ...currentMoc.value, coverImagePath: path };
-    }
-    return path;
+    return undefined;
   }
 
   async function deleteMocCoverImage(mocId: string) {
-    await api.deleteMocCoverImage(mocId);
-    const index = mocLists.value.findIndex((m) => m.id === mocId);
-    if (index !== -1) {
-      mocLists.value[index] = { ...mocLists.value[index], coverImagePath: undefined };
-    }
-    if (currentMoc.value?.id === mocId) {
-      currentMoc.value = { ...currentMoc.value, coverImagePath: undefined };
+    const response = await api.deleteMocCoverImage(mocId);
+    if (response.success) {
+      const index = mocLists.value.findIndex((m) => m.id === mocId);
+      if (index !== -1) {
+        mocLists.value[index] = { ...mocLists.value[index], coverImagePath: undefined };
+      }
+      if (currentMoc.value?.id === mocId) {
+        currentMoc.value = { ...currentMoc.value, coverImagePath: undefined };
+      }
     }
   }
 

@@ -8,6 +8,7 @@ import type {
   AdvancedFilterCondition,
   AdvancedFilterGroup,
   LogicMode,
+  ApiResponse,
 } from "@/types";
 import { useMasterDataStore } from "./masterData";
 
@@ -325,30 +326,39 @@ export const usePartsStore = defineStore("parts", () => {
   async function loadParts() {
     loading.value = true;
     try {
-      parts.value = await api.getParts();
+      const response: ApiResponse<Part[]> = await api.getParts();
+      if (response.success) {
+        parts.value = response.data;
+      }
     } finally {
       loading.value = false;
     }
   }
 
   async function addPart(part: Omit<Part, "id" | "createdAt" | "updatedAt">) {
-    const newPart = await api.createPart(part);
-    parts.value.push(newPart);
-    return newPart;
+    const response: ApiResponse<Part> = await api.createPart(part);
+    if (response.success) {
+      parts.value.push(response.data);
+    }
+    return response.success ? response.data : undefined;
   }
 
   async function updatePart(part: Part) {
-    const updated = await api.updatePart(part);
-    const index = parts.value.findIndex((p) => p.id === part.id);
-    if (index !== -1) {
-      parts.value[index] = updated;
+    const response: ApiResponse<Part> = await api.updatePart(part);
+    if (response.success) {
+      const index = parts.value.findIndex((p) => p.id === part.id);
+      if (index !== -1) {
+        parts.value[index] = response.data;
+      }
     }
-    return updated;
+    return response.success ? response.data : undefined;
   }
 
   async function deletePart(id: string) {
-    await api.deletePart(id);
-    parts.value = parts.value.filter((p) => p.id !== id);
+    const response: ApiResponse<void> = await api.deletePart(id);
+    if (response.success) {
+      parts.value = parts.value.filter((p) => p.id !== id);
+    }
   }
 
   function getPartById(id: string) {

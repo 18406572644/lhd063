@@ -22,6 +22,7 @@ import {
   useMasterDataStore,
   useAppStore,
 } from "@/stores";
+import { useApiRequest } from "@/composables";
 import type { MocList, MocStatus } from "@/types";
 import { MOC_STATUS_OPTIONS } from "@/types";
 import MocDialog from "@/components/MocDialog.vue";
@@ -30,6 +31,11 @@ const mocStore = useMocStore();
 const partsStore = usePartsStore();
 const masterDataStore = useMasterDataStore();
 const appStore = useAppStore();
+
+const loadDataRequest = useApiRequest<void>();
+const detailRequest = useApiRequest<MocList | null>();
+const statusChangeRequest = useApiRequest<void>();
+const statusLogsRequest = useApiRequest<void>();
 
 const searchKeyword = ref("");
 const dialogVisible = ref(false);
@@ -105,11 +111,13 @@ function getImageUrl(path?: string) {
 }
 
 async function loadData() {
-  await Promise.all([
-    mocStore.loadMocLists(),
-    partsStore.loadParts(),
-    masterDataStore.loadAll(),
-  ]);
+  await loadDataRequest.execute(() =>
+    Promise.all([
+      mocStore.loadMocLists(),
+      partsStore.loadParts(),
+      masterDataStore.loadAll(),
+    ]).then(() => ({ success: true as const, data: undefined as void }))
+  );
 }
 
 function handleAdd() {
@@ -134,12 +142,15 @@ async function handleDelete(moc: MocList) {
 }
 
 async function handleViewDetail(moc: MocList) {
-  appStore.startLoading("正在比对库存...");
-  try {
-    currentMocDetail.value = await mocStore.compareInventory(moc.id);
+  const response = await detailRequest.execute(() =>
+    mocStore.compareInventory(moc.id).then((result) => ({
+      success: true as const,
+      data: result as MocList | null,
+    }))
+  );
+  if (response.success && response.data) {
+    currentMocDetail.value = response.data;
     detailVisible.value = true;
-  } finally {
-    appStore.stopLoading();
   }
 }
 
@@ -148,7 +159,7 @@ async function handleDialogSave(
     coverRemoved?: boolean;
   }
 ) {
-  let savedMoc: MocList;
+  let savedMoc: MocList | undefined;
   try {
     if (editingMoc.value) {
       savedMoc = await mocStore.updateMocList({
@@ -161,7 +172,7 @@ async function handleDialogSave(
       appStore.showSuccess("创建成功");
     }
 
-    if (mocData.coverImagePath) {
+    if (mocData.coverImagePath && savedMoc) {
       appStore.startLoading("正在上传封面...");
       try {
         await mocStore.saveMocCoverImage(savedMoc.id, mocData.coverImagePath);
@@ -190,29 +201,33 @@ function openStatusChange(moc: MocList) {
 
 async function confirmStatusChange() {
   if (!statusChangeMoc.value) return;
-  appStore.startLoading("正在更新状态...");
-  try {
-    await mocStore.changeMocStatus(
-      statusChangeMoc.value.id,
+  const response = await statusChangeRequest.execute(() =>
+    mocStore.changeMocStatus(
+      statusChangeMoc.value!.id,
       newStatus.value,
       statusRemark.value || undefined
-    );
+    ).then((result) => ({
+      success: true as const,
+      data: result as MocList | undefined,
+    }))
+  );
+  if (response.success) {
     appStore.showSuccess("状态更新成功");
     statusDialogVisible.value = false;
-  } finally {
-    appStore.stopLoading();
   }
 }
 
 async function openStatusLogs(moc: MocList) {
   statusLogsMoc.value = moc;
   mocStore.clearStatusLogs();
-  appStore.startLoading("正在加载状态日志...");
-  try {
-    await mocStore.loadStatusLogs(moc.id);
+  const response = await statusLogsRequest.execute(() =>
+    mocStore.loadStatusLogs(moc.id).then(() => ({
+      success: true as const,
+      data: undefined as void,
+    }))
+  );
+  if (response.success) {
     statusLogsVisible.value = true;
-  } finally {
-    appStore.stopLoading();
   }
 }
 

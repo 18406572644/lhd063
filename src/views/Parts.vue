@@ -2,6 +2,7 @@
 import { ref, computed, onMounted, watch } from "vue";
 import { Plus, Edit, Delete, Refresh, Camera, Picture, View, Box, Sort, ArrowUp, ArrowDown } from "@element-plus/icons-vue";
 import { usePartsStore, useMasterDataStore, useAppStore, useViewsStore } from "@/stores";
+import { useApiRequest } from "@/composables";
 import type { Part, SavedView, PartFilter } from "@/types";
 import PartDialog from "@/components/PartDialog.vue";
 import PartImageDialog from "@/components/PartImageDialog.vue";
@@ -12,6 +13,7 @@ const partsStore = usePartsStore();
 const masterDataStore = useMasterDataStore();
 const appStore = useAppStore();
 const viewsStore = useViewsStore();
+const { execute } = useApiRequest();
 
 const currentFilter = ref<PartFilter>(JSON.parse(JSON.stringify(partsStore.filter || {})));
 const dialogVisible = ref(false);
@@ -25,7 +27,11 @@ const imagePartName = ref("");
 const activeViewName = computed(() => viewsStore.activeView?.name || "全部零件");
 
 async function loadData() {
-  await Promise.all([partsStore.loadParts(), masterDataStore.loadAll()]);
+  await execute(() =>
+    Promise.all([partsStore.loadParts(), masterDataStore.loadAll()]).then(
+      () => ({ success: true as const, data: undefined as void })
+    )
+  );
 }
 
 function onFilterChange(newFilter: PartFilter) {

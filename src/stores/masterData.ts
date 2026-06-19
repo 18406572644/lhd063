@@ -25,99 +25,143 @@ export const useMasterDataStore = defineStore("masterData", () => {
   }
 
   async function loadPartTypes() {
-    partTypes.value = await api.getPartTypes();
-  }
-
-  async function addPartType(type: Omit<PartType, "id">) {
-    const newType = await api.createPartType(type);
-    partTypes.value.push(newType);
-    return newType;
-  }
-
-  async function updatePartType(type: PartType) {
-    const updated = await api.updatePartType(type);
-    const index = partTypes.value.findIndex((t) => t.id === type.id);
-    if (index !== -1) {
-      partTypes.value[index] = updated;
+    const response = await api.getPartTypes();
+    if (response.success) {
+      partTypes.value = response.data;
     }
-    return updated;
+  }
+
+  async function addPartType(type: Omit<PartType, "id">): Promise<PartType | undefined> {
+    const response = await api.createPartType(type);
+    if (response.success) {
+      partTypes.value.push(response.data);
+      return response.data;
+    }
+    return undefined;
+  }
+
+  async function updatePartType(type: PartType): Promise<PartType | undefined> {
+    const response = await api.updatePartType(type);
+    if (response.success) {
+      const index = partTypes.value.findIndex((t) => t.id === type.id);
+      if (index !== -1) {
+        partTypes.value[index] = response.data;
+      }
+      return response.data;
+    }
+    return undefined;
   }
 
   async function deletePartType(id: string) {
-    await api.deletePartType(id);
-    partTypes.value = partTypes.value.filter((t) => t.id !== id);
+    const response = await api.deletePartType(id);
+    if (response.success) {
+      partTypes.value = partTypes.value.filter((t) => t.id !== id);
+    }
   }
 
   async function loadPartColors() {
-    partColors.value = await api.getPartColors();
-  }
-
-  async function addPartColor(color: Omit<PartColor, "id">) {
-    const newColor = await api.createPartColor(color);
-    partColors.value.push(newColor);
-    return newColor;
-  }
-
-  async function updatePartColor(color: PartColor) {
-    const updated = await api.updatePartColor(color);
-    const index = partColors.value.findIndex((c) => c.id === color.id);
-    if (index !== -1) {
-      partColors.value[index] = updated;
+    const response = await api.getPartColors();
+    if (response.success) {
+      partColors.value = response.data;
     }
-    return updated;
+  }
+
+  async function addPartColor(color: Omit<PartColor, "id">): Promise<PartColor | undefined> {
+    const response = await api.createPartColor(color);
+    if (response.success) {
+      partColors.value.push(response.data);
+      return response.data;
+    }
+    return undefined;
+  }
+
+  async function updatePartColor(color: PartColor): Promise<PartColor | undefined> {
+    const response = await api.updatePartColor(color);
+    if (response.success) {
+      const index = partColors.value.findIndex((c) => c.id === color.id);
+      if (index !== -1) {
+        partColors.value[index] = response.data;
+      }
+      return response.data;
+    }
+    return undefined;
   }
 
   async function deletePartColor(id: string) {
-    await api.deletePartColor(id);
-    partColors.value = partColors.value.filter((c) => c.id !== id);
+    const response = await api.deletePartColor(id);
+    if (response.success) {
+      partColors.value = partColors.value.filter((c) => c.id !== id);
+    }
   }
 
   async function loadPartSizes() {
-    partSizes.value = await api.getPartSizes();
-  }
-
-  async function addPartSize(size: Omit<PartSize, "id">) {
-    const newSize = await api.createPartSize(size);
-    partSizes.value.push(newSize);
-    return newSize;
-  }
-
-  async function updatePartSize(size: PartSize) {
-    const updated = await api.updatePartSize(size);
-    const index = partSizes.value.findIndex((s) => s.id === size.id);
-    if (index !== -1) {
-      partSizes.value[index] = updated;
+    const response = await api.getPartSizes();
+    if (response.success) {
+      partSizes.value = response.data;
     }
-    return updated;
+  }
+
+  async function addPartSize(size: Omit<PartSize, "id">): Promise<PartSize | undefined> {
+    const response = await api.createPartSize(size);
+    if (response.success) {
+      partSizes.value.push(response.data);
+      return response.data;
+    }
+    return undefined;
+  }
+
+  async function updatePartSize(size: PartSize): Promise<PartSize | undefined> {
+    const response = await api.updatePartSize(size);
+    if (response.success) {
+      const index = partSizes.value.findIndex((s) => s.id === size.id);
+      if (index !== -1) {
+        partSizes.value[index] = response.data;
+      }
+      return response.data;
+    }
+    return undefined;
   }
 
   async function deletePartSize(id: string) {
-    await api.deletePartSize(id);
-    partSizes.value = partSizes.value.filter((s) => s.id !== id);
+    const response = await api.deletePartSize(id);
+    if (response.success) {
+      partSizes.value = partSizes.value.filter((s) => s.id !== id);
+    }
   }
 
   async function loadLocations() {
-    locations.value = await api.getLocations();
-  }
-
-  async function addLocation(location: Omit<Location, "id">) {
-    const newLocation = await api.createLocation(location);
-    locations.value.push(newLocation);
-    return newLocation;
-  }
-
-  async function updateLocation(location: Location) {
-    const updated = await api.updateLocation(location);
-    const index = locations.value.findIndex((l) => l.id === location.id);
-    if (index !== -1) {
-      locations.value[index] = updated;
+    const response = await api.getLocations();
+    if (response.success) {
+      locations.value = response.data;
     }
-    return updated;
+  }
+
+  async function addLocation(location: Omit<Location, "id">): Promise<Location | undefined> {
+    const response = await api.createLocation(location);
+    if (response.success) {
+      locations.value.push(response.data);
+      return response.data;
+    }
+    return undefined;
+  }
+
+  async function updateLocation(location: Location): Promise<Location | undefined> {
+    const response = await api.updateLocation(location);
+    if (response.success) {
+      const index = locations.value.findIndex((l) => l.id === location.id);
+      if (index !== -1) {
+        locations.value[index] = response.data;
+      }
+      return response.data;
+    }
+    return undefined;
   }
 
   async function deleteLocation(id: string) {
-    await api.deleteLocation(id);
-    locations.value = locations.value.filter((l) => l.id !== id);
+    const response = await api.deleteLocation(id);
+    if (response.success) {
+      locations.value = locations.value.filter((l) => l.id !== id);
+    }
   }
 
   function getPartTypeName(code: string) {

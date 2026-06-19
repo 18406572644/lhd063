@@ -5,8 +5,24 @@ import { useAppStore } from "@/stores";
 import type { OperationLog, OperationLogFilter, BackupInfo, BackupConfig, IntegrityCheckResult } from "@/types";
 import { OPERATION_TYPE_OPTIONS, OBJECT_TYPE_OPTIONS } from "@/types";
 import { api } from "@/api";
+import { useApiRequest } from "@/composables";
 
 const appStore = useAppStore();
+
+const logsRequest = useApiRequest<OperationLog[]>();
+const backupsRequest = useApiRequest<BackupInfo[]>();
+const backupConfigRequest = useApiRequest<BackupConfig>();
+const createBackupRequest = useApiRequest<BackupInfo>();
+const deleteBackupRequest = useApiRequest<void>();
+const restoreRequest = useApiRequest();
+const updateBackupConfigRequest = useApiRequest<void>();
+const integrityRequest = useApiRequest<IntegrityCheckResult>();
+
+const logsLoading = logsRequest.loading;
+const backupsLoading = backupsRequest.loading;
+const createBackupLoading = createBackupRequest.loading;
+const restoreLoading = restoreRequest.loading;
+const integrityLoading = integrityRequest.loading;
 
 const keyDialogVisible = ref(false);
 const oldKey = ref("");
@@ -15,7 +31,6 @@ const confirmKey = ref("");
 
 const logsDialogVisible = ref(false);
 const operationLogs = ref<OperationLog[]>([]);
-const logsLoading = ref(false);
 const filterOperationType = ref("");
 const filterObjectType = ref("");
 const logDetailDialogVisible = ref(false);
@@ -30,9 +45,7 @@ const appInfo = ref({
 });
 
 const backups = ref<BackupInfo[]>([]);
-const backupsLoading = ref(false);
 const backupConfig = ref<BackupConfig>({ enabled: false, frequency: "daily", keepCount: 5, encrypt: false });
-const createBackupLoading = ref(false);
 const backupPassword = ref("");
 const backupEncryptEnabled = ref(false);
 
@@ -40,10 +53,8 @@ const restoreDialogVisible = ref(false);
 const restoreTarget = ref<BackupInfo | null>(null);
 const restoreMode = ref<"full" | "merge">("full");
 const restorePassword = ref("");
-const restoreLoading = ref(false);
 
 const integrityResult = ref<IntegrityCheckResult | null>(null);
-const integrityLoading = ref(false);
 const integrityDialogVisible = ref(false);
 
 async function handleChangeKey() {
@@ -88,14 +99,12 @@ async function openLogsDialog() {
 }
 
 async function loadOperationLogs() {
-  logsLoading.value = true;
-  try {
-    const filter: OperationLogFilter = {};
-    if (filterOperationType.value) filter.operationType = filterOperationType.value;
-    if (filterObjectType.value) filter.objectType = filterObjectType.value;
-    operationLogs.value = await api.getOperationLogs(filter);
-  } finally {
-    logsLoading.value = false;
+  const filter: OperationLogFilter = {};
+  if (filterOperationType.value) filter.operationType = filterOperationType.value;
+  if (filterObjectType.value) filter.objectType = filterObjectType.value;
+  const response = await logsRequest.execute(() => api.getOperationLogs(filter));
+  if (response.success) {
+    operationLogs.value = response.data;
   }
 }
 
@@ -155,35 +164,27 @@ function formatFileSize(bytes: number) {
 }
 
 async function loadBackups() {
-  backupsLoading.value = true;
-  try {
-    backups.value = await api.listBackups();
-  } finally {
-    backupsLoading.value = false;
+  const response = await backupsRequest.execute(() => api.listBackups());
+  if (response.success) {
+    backups.value = response.data;
   }
 }
 
 async function loadBackupConfig() {
-  try {
-    backupConfig.value = await api.getBackupConfig();
+  const response = await backupConfigRequest.execute(() => api.getBackupConfig());
+  if (response.success) {
+    backupConfig.value = response.data;
     backupEncryptEnabled.value = backupConfig.value.encrypt;
-  } catch {
-    // keep defaults
   }
 }
 
 async function handleCreateBackup() {
-  createBackupLoading.value = true;
-  try {
-    const password = backupEncryptEnabled.value && backupPassword.value ? backupPassword.value : undefined;
-    const info = await api.createBackup(password);
-    appStore.showSuccess(`备份创建成功：${info.filename}`);
+  const password = backupEncryptEnabled.value && backupPassword.value ? backupPassword.value : undefined;
+  const response = await createBackupRequest.execute(() => api.createBackup(password));
+  if (response.success) {
+    appStore.showSuccess(`备份创建成功：${response.data.filename}`);
     backupPassword.value = "";
     await loadBackups();
-  } catch (e: any) {
-    appStore.showError(`备份创建失败：${e?.toString() || "未知错误"}`);
-  } finally {
-    createBackupLoading.value = false;
   }
 }
 
@@ -192,12 +193,10 @@ async function handleDeleteBackup(backup: BackupInfo) {
     `确定要删除备份「${backup.filename}」吗？此操作不可恢复。`
   );
   if (!confirmed) return;
-  try {
-    await api.deleteBackup(backup.filename);
+  const response = await deleteBackupRequest.execute(() => api.deleteBackup(backup.filename));
+  if (response.success) {
     appStore.showSuccess("备份已删除");
     await loadBackups();
-  } catch (e: any) {
-    appStore.showError(`删除失败：${e?.toString() || "未知错误"}`);
   }
 }
 
@@ -218,50 +217,38 @@ async function handleRestore() {
     if (!confirmed) return;
   }
 
-  restoreLoading.value = true;
-  try {
-    const password = restoreTarget.value.encrypted && restorePassword.value ? restorePassword.value : undefined;
-    const result = await api.restoreBackup(
-      restoreTarget.value.filename,
-      password,
-      restoreMode.value
-    );
+  const password = restoreTarget.value.encrypted && restorePassword.value ? restorePassword.value : undefined;
+  const response = await restoreRequest.execute(() =>
+    api.restoreBackup(restoreTarget.value!.filename, password, restoreMode.value)
+  );
+  if (response.success) {
+    const result = response.data;
     if (result.success) {
       appStore.showSuccess(result.message);
       restoreDialogVisible.value = false;
     } else {
       appStore.showError(result.message);
     }
-  } catch (e: any) {
-    appStore.showError(`恢复失败：${e?.toString() || "未知错误"}`);
-  } finally {
-    restoreLoading.value = false;
   }
 }
 
 async function handleBackupConfigChange() {
-  try {
-    const config: BackupConfig = {
-      ...backupConfig.value,
-      encrypt: backupEncryptEnabled.value,
-    };
-    await api.updateBackupConfig(config);
+  const config: BackupConfig = {
+    ...backupConfig.value,
+    encrypt: backupEncryptEnabled.value,
+  };
+  const response = await updateBackupConfigRequest.execute(() => api.updateBackupConfig(config));
+  if (response.success) {
     backupConfig.value = config;
     appStore.showSuccess("备份配置已保存");
-  } catch (e: any) {
-    appStore.showError(`配置保存失败：${e?.toString() || "未知错误"}`);
   }
 }
 
 async function handleCheckIntegrity() {
-  integrityLoading.value = true;
-  try {
-    integrityResult.value = await api.checkDatabaseIntegrity();
+  const response = await integrityRequest.execute(() => api.checkDatabaseIntegrity());
+  if (response.success) {
+    integrityResult.value = response.data;
     integrityDialogVisible.value = true;
-  } catch (e: any) {
-    appStore.showError(`完整性检查失败：${e?.toString() || "未知错误"}`);
-  } finally {
-    integrityLoading.value = false;
   }
 }
 
@@ -272,20 +259,17 @@ async function handleAutoRecover() {
   );
   if (!confirmed) return;
 
-  try {
-    const result = await api.restoreBackup(
-      integrityResult.value.latestBackup.filename,
-      undefined,
-      "full"
-    );
+  const response = await restoreRequest.execute(() =>
+    api.restoreBackup(integrityResult.value?.latestBackup!.filename!, undefined, "full")
+  );
+  if (response.success) {
+    const result = response.data;
     if (result.success) {
       appStore.showSuccess("数据已从备份恢复");
       integrityDialogVisible.value = false;
     } else {
       appStore.showError(result.message);
     }
-  } catch (e: any) {
-    appStore.showError(`恢复失败：${e?.toString() || "未知错误"}`);
   }
 }
 

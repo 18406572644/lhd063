@@ -152,10 +152,13 @@ async function loadOperationLogs() {
   if (!props.part?.id) return;
   logsLoading.value = true;
   try {
-    operationLogs.value = await api.getOperationLogs({
+    const response = await api.getOperationLogs({
       objectType: "part",
       objectId: props.part.id,
     });
+    if (response.success) {
+      operationLogs.value = response.data;
+    }
   } finally {
     logsLoading.value = false;
   }

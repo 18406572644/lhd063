@@ -433,3 +433,44 @@ export interface IntegrityCheckResult {
   canAutoRecover: boolean;
   latestBackup: BackupInfo | null;
 }
+
+export type ApiErrorCode =
+  | "NETWORK_ERROR"
+  | "NOT_FOUND"
+  | "VALIDATION_ERROR"
+  | "UNAUTHORIZED"
+  | "FORBIDDEN"
+  | "CONFLICT"
+  | "INTERNAL_ERROR"
+  | "UNKNOWN_ERROR";
+
+export interface ApiErrorDetail {
+  code: ApiErrorCode;
+  message: string;
+  field?: string;
+  fields?: Record<string, string[]>;
+}
+
+export class ApiError extends Error {
+  code: ApiErrorCode;
+  detail?: string;
+  field?: string;
+  fields?: Record<string, string[]>;
+
+  constructor(errorDetail: ApiErrorDetail, originalError?: unknown) {
+    super(errorDetail.message);
+    this.name = "ApiError";
+    this.code = errorDetail.code;
+    this.field = errorDetail.field;
+    this.fields = errorDetail.fields;
+    if (originalError instanceof Error) {
+      this.detail = originalError.message;
+    }
+  }
+}
+
+export interface ApiResponse<T> {
+  success: boolean;
+  data: T;
+  error?: ApiErrorDetail;
+}

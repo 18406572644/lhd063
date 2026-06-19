@@ -2,10 +2,12 @@
 import { ref, computed, onMounted } from "vue";
 import { Plus, Edit, Delete, Refresh, Rank } from "@element-plus/icons-vue";
 import { useMasterDataStore, useAppStore } from "@/stores";
+import { useApiRequest } from "@/composables";
 import type { PartType, PartColor, PartSize, Location, LocationTreeNode } from "@/types";
 
 const masterDataStore = useMasterDataStore();
 const appStore = useAppStore();
+const { execute } = useApiRequest();
 
 const activeTab = ref("types");
 
@@ -109,7 +111,9 @@ async function handleLocationDragEnd(
 }
 
 async function loadData() {
-  await masterDataStore.loadAll();
+  await execute(() =>
+    masterDataStore.loadAll().then(() => ({ success: true as const, data: undefined as void }))
+  );
 }
 
 function openTypeDialog(type?: PartType) {

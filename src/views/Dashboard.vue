@@ -11,6 +11,7 @@ import {
   Calendar,
 } from "@element-plus/icons-vue";
 import { useStatsStore, usePartsStore, useMocStore, useMasterDataStore } from "@/stores";
+import { useApiRequest } from "@/composables";
 import { useRouter } from "vue-router";
 import type { TypeCount, ColorCount, LocationCount, MocStatusCount, LocationTreeNode } from "@/types";
 import { MOC_STATUS_OPTIONS } from "@/types";
@@ -21,22 +22,19 @@ const mocStore = useMocStore();
 const masterDataStore = useMasterDataStore();
 const router = useRouter();
 
-const loading = ref(false);
+const { execute } = useApiRequest();
 const sunburstCanvas = ref<HTMLCanvasElement | null>(null);
 const sunburstTooltip = ref({ visible: false, x: 0, y: 0, name: "", count: 0, total: 0 });
 
 async function loadData() {
-  loading.value = true;
-  try {
-    await Promise.all([
+  await execute(() =>
+    Promise.all([
       statsStore.loadStats(),
       partsStore.loadParts(),
       mocStore.loadMocLists(),
       masterDataStore.loadAll(),
-    ]);
-  } finally {
-    loading.value = false;
-  }
+    ]).then(() => ({ success: true, data: undefined as void }))
+  );
 }
 
 const statCards = computed(() => {

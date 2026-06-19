@@ -2,6 +2,7 @@ import { defineStore } from "pinia";
 import { ref } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { api } from "@/api";
+import type { ApiResponse } from "@/types";
 
 export const useAppStore = defineStore("app", () => {
   const loading = ref(false);
@@ -79,12 +80,18 @@ export const useAppStore = defineStore("app", () => {
     startLoading("正在初始化应用...");
     try {
       const initPromise = api.initDatabase();
-      const timeoutPromise = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error("初始化超时")), 15000)
+      const timeoutPromise = new Promise<ApiResponse<void>>((resolve) =>
+        setTimeout(() => resolve({ success: false, data: undefined as unknown as void, error: { code: "NETWORK_ERROR", message: "初始化超时" } }), 15000)
       );
-      await Promise.race([initPromise, timeoutPromise]);
+      const initResponse = await Promise.race([initPromise, timeoutPromise]);
+      if (!initResponse.success) {
+        throw new Error(initResponse.error?.message || "初始化超时");
+      }
 
-      encryptionKey.value = await api.getEncryptionKey();
+      const keyResponse = await api.getEncryptionKey();
+      if (keyResponse.success) {
+        encryptionKey.value = keyResponse.data;
+      }
       initialized.value = true;
 
       checkIntegrityOnStartup();
@@ -100,8 +107,8 @@ export const useAppStore = defineStore("app", () => {
 
   async function checkIntegrityOnStartup() {
     try {
-      const result = await api.checkDatabaseIntegrity();
-      if (!result.ok) {
+      const response = await api.checkDatabaseIntegrity();
+      if (response.success && !response.data.ok) {
         showWarning("数据库完整性异常，请在设置中进行完整性检查并恢复备份");
       }
     } catch {
@@ -111,11 +118,13 @@ export const useAppStore = defineStore("app", () => {
 
   async function performAutoBackupIfNeeded() {
     try {
-      const needed = await api.shouldAutoBackup();
-      if (needed) {
-        const config = await api.getBackupConfig();
-        const password = config.encrypt ? undefined : undefined;
-        await api.createBackup(password);
+      const neededResponse = await api.shouldAutoBackup();
+      if (neededResponse.success && neededResponse.data) {
+        const configResponse = await api.getBackupConfig();
+        if (configResponse.success) {
+          const password = configResponse.data.encrypt ? undefined : undefined;
+          await api.createBackup(password);
+        }
       }
     } catch {
       // silently ignore
@@ -125,10 +134,15 @@ export const useAppStore = defineStore("app", () => {
   async function changeEncryptionKey(oldKey: string, newKey: string) {
     startLoading("正在修改加密密钥...");
     try {
-      await api.changeEncryptionKey(oldKey, newKey);
-      encryptionKey.value = newKey;
-      showSuccess("加密密钥修改成功");
-      return true;
+      const response = await api.changeEncryptionKey(oldKey, newKey);
+      if (response.success) {
+        encryptionKey.value = newKey;
+        showSuccess("加密密钥修改成功");
+        return true;
+      } else {
+        showError(response.error?.message || "修改加密密钥失败");
+        return false;
+      }
     } catch (error) {
       showError("修改加密密钥失败");
       return false;

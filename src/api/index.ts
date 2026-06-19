@@ -17,7 +17,10 @@ import type {
   BackupConfig,
   RestoreResult,
   IntegrityCheckResult,
+  ApiResponse,
 } from "@/types";
+import { ApiError } from "@/types";
+import { categorizeError } from "@/composables";
 
 function isTauriAvailable(): boolean {
   return (
@@ -26,12 +29,109 @@ function isTauriAvailable(): boolean {
   );
 }
 
-function wrapInvoke<T>(command: string, args?: Record<string, unknown>): Promise<T> {
-  if (!isTauriAvailable()) {
-    console.warn(`[mock] Called ${command} - returning mock data`);
-    return getMockData(command, args) as Promise<T>;
+function isNetworkError(error: unknown): boolean {
+  if (error instanceof ApiError) return error.code === "NETWORK_ERROR";
+  if (error instanceof Error) {
+    const msg = error.message.toLowerCase();
+    return (
+      msg.includes("failed") ||
+      msg.includes("network") ||
+      msg.includes("timeout") ||
+      msg.includes("fetch") ||
+      msg.includes("err_network")
+    );
   }
-  return invoke(command, args);
+  return false;
+}
+
+function classifyTauriError(error: unknown): ApiError {
+  if (error instanceof ApiError) return error;
+
+  if (isNetworkError(error)) {
+    return new ApiError(
+      { code: "NETWORK_ERROR", message: "网络连接失败，请检查" },
+      error
+    );
+  }
+
+  if (error instanceof Error) {
+    const msg = error.message || "";
+
+    if (msg.includes("NotFound") || msg.includes("not_found") || msg.includes("404")) {
+      return new ApiError(
+        { code: "NOT_FOUND", message: "请求的资源不存在" },
+        error
+      );
+    }
+    if (
+      msg.includes("Validation") ||
+      msg.includes("validation") ||
+      msg.includes("invalid") ||
+      msg.includes("required")
+    ) {
+      const fields: Record<string, string[]> = {};
+      const fieldMatch = msg.match(/field\s*[:=]\s*(\w+)/i);
+      if (fieldMatch) {
+        fields[fieldMatch[1]] = [msg];
+      }
+      return new ApiError(
+        {
+          code: "VALIDATION_ERROR",
+          message: msg,
+          field: fieldMatch?.[1],
+          fields: Object.keys(fields).length > 0 ? fields : undefined,
+        },
+        error
+      );
+    }
+    if (msg.includes("Unauthorized") || msg.includes("unauthorized") || msg.includes("401")) {
+      return new ApiError(
+        { code: "UNAUTHORIZED", message: "未授权，请重新登录" },
+        error
+      );
+    }
+    if (msg.includes("Forbidden") || msg.includes("forbidden") || msg.includes("403")) {
+      return new ApiError(
+        { code: "FORBIDDEN", message: "没有操作权限" },
+        error
+      );
+    }
+    if (msg.includes("Conflict") || msg.includes("conflict") || msg.includes("duplicate")) {
+      return new ApiError(
+        { code: "CONFLICT", message: "数据冲突，请刷新后重试" },
+        error
+      );
+    }
+  }
+
+  return categorizeError(error);
+}
+
+async function wrapInvoke<T>(command: string, args?: Record<string, unknown>): Promise<ApiResponse<T>> {
+  try {
+    let result: T;
+
+    if (!isTauriAvailable()) {
+      console.warn(`[mock] Called ${command} - returning mock data`);
+      result = await (getMockData(command, args) as Promise<T>);
+    } else {
+      result = await invoke<T>(command, args);
+    }
+
+    return { success: true, data: result };
+  } catch (error: unknown) {
+    const apiError = classifyTauriError(error);
+    return {
+      success: false,
+      data: null as T,
+      error: {
+        code: apiError.code,
+        message: apiError.message,
+        field: apiError.field,
+        fields: apiError.fields,
+      },
+    };
+  }
 }
 
 function getMockData(command: string, args?: Record<string, unknown>): unknown {
@@ -418,207 +518,207 @@ function getMockData(command: string, args?: Record<string, unknown>): unknown {
 }
 
 export const api = {
-  async initDatabase(): Promise<void> {
+  async initDatabase(): Promise<ApiResponse<void>> {
     return wrapInvoke("init_database");
   },
 
-  async getEncryptionKey(): Promise<string> {
+  async getEncryptionKey(): Promise<ApiResponse<string>> {
     return wrapInvoke("get_encryption_key");
   },
 
-  async changeEncryptionKey(oldKey: string, newKey: string): Promise<void> {
+  async changeEncryptionKey(oldKey: string, newKey: string): Promise<ApiResponse<void>> {
     return wrapInvoke("change_encryption_key", { oldKey, newKey });
   },
 
-  async getParts(filter?: PartFilter): Promise<Part[]> {
+  async getParts(filter?: PartFilter): Promise<ApiResponse<Part[]>> {
     return wrapInvoke("get_parts", { filter });
   },
 
-  async getPartById(id: string): Promise<Part | null> {
+  async getPartById(id: string): Promise<ApiResponse<Part | null>> {
     return wrapInvoke("get_part_by_id", { id });
   },
 
-  async createPart(part: Omit<Part, "id" | "createdAt" | "updatedAt">): Promise<Part> {
+  async createPart(part: Omit<Part, "id" | "createdAt" | "updatedAt">): Promise<ApiResponse<Part>> {
     return wrapInvoke("create_part", { part });
   },
 
-  async updatePart(part: Part): Promise<Part> {
+  async updatePart(part: Part): Promise<ApiResponse<Part>> {
     return wrapInvoke("update_part", { part });
   },
 
-  async deletePart(id: string): Promise<void> {
+  async deletePart(id: string): Promise<ApiResponse<void>> {
     return wrapInvoke("delete_part", { id });
   },
 
-  async getPartTypes(): Promise<PartType[]> {
+  async getPartTypes(): Promise<ApiResponse<PartType[]>> {
     return wrapInvoke("get_part_types");
   },
 
-  async createPartType(type: Omit<PartType, "id">): Promise<PartType> {
+  async createPartType(type: Omit<PartType, "id">): Promise<ApiResponse<PartType>> {
     return wrapInvoke("create_part_type", { type });
   },
 
-  async updatePartType(type: PartType): Promise<PartType> {
+  async updatePartType(type: PartType): Promise<ApiResponse<PartType>> {
     return wrapInvoke("update_part_type", { type });
   },
 
-  async deletePartType(id: string): Promise<void> {
+  async deletePartType(id: string): Promise<ApiResponse<void>> {
     return wrapInvoke("delete_part_type", { id });
   },
 
-  async getPartColors(): Promise<PartColor[]> {
+  async getPartColors(): Promise<ApiResponse<PartColor[]>> {
     return wrapInvoke("get_part_colors");
   },
 
-  async createPartColor(color: Omit<PartColor, "id">): Promise<PartColor> {
+  async createPartColor(color: Omit<PartColor, "id">): Promise<ApiResponse<PartColor>> {
     return wrapInvoke("create_part_color", { color });
   },
 
-  async updatePartColor(color: PartColor): Promise<PartColor> {
+  async updatePartColor(color: PartColor): Promise<ApiResponse<PartColor>> {
     return wrapInvoke("update_part_color", { color });
   },
 
-  async deletePartColor(id: string): Promise<void> {
+  async deletePartColor(id: string): Promise<ApiResponse<void>> {
     return wrapInvoke("delete_part_color", { id });
   },
 
-  async getPartSizes(): Promise<PartSize[]> {
+  async getPartSizes(): Promise<ApiResponse<PartSize[]>> {
     return wrapInvoke("get_part_sizes");
   },
 
-  async createPartSize(size: Omit<PartSize, "id">): Promise<PartSize> {
+  async createPartSize(size: Omit<PartSize, "id">): Promise<ApiResponse<PartSize>> {
     return wrapInvoke("create_part_size", { size });
   },
 
-  async updatePartSize(size: PartSize): Promise<PartSize> {
+  async updatePartSize(size: PartSize): Promise<ApiResponse<PartSize>> {
     return wrapInvoke("update_part_size", { size });
   },
 
-  async deletePartSize(id: string): Promise<void> {
+  async deletePartSize(id: string): Promise<ApiResponse<void>> {
     return wrapInvoke("delete_part_size", { id });
   },
 
-  async getLocations(): Promise<Location[]> {
+  async getLocations(): Promise<ApiResponse<Location[]>> {
     return wrapInvoke("get_locations");
   },
 
-  async createLocation(location: Omit<Location, "id">): Promise<Location> {
+  async createLocation(location: Omit<Location, "id">): Promise<ApiResponse<Location>> {
     return wrapInvoke("create_location", { location });
   },
 
-  async updateLocation(location: Location): Promise<Location> {
+  async updateLocation(location: Location): Promise<ApiResponse<Location>> {
     return wrapInvoke("update_location", { location });
   },
 
-  async deleteLocation(id: string): Promise<void> {
+  async deleteLocation(id: string): Promise<ApiResponse<void>> {
     return wrapInvoke("delete_location", { id });
   },
 
-  async getMocLists(): Promise<MocList[]> {
+  async getMocLists(): Promise<ApiResponse<MocList[]>> {
     return wrapInvoke("get_moc_lists");
   },
 
-  async getMocListById(id: string): Promise<MocList | null> {
+  async getMocListById(id: string): Promise<ApiResponse<MocList | null>> {
     return wrapInvoke("get_moc_list_by_id", { id });
   },
 
-  async createMocList(moc: Omit<MocList, "id" | "createdAt" | "updatedAt">): Promise<MocList> {
+  async createMocList(moc: Omit<MocList, "id" | "createdAt" | "updatedAt">): Promise<ApiResponse<MocList>> {
     return wrapInvoke("create_moc_list", { moc });
   },
 
-  async updateMocList(moc: MocList): Promise<MocList> {
+  async updateMocList(moc: MocList): Promise<ApiResponse<MocList>> {
     return wrapInvoke("update_moc_list", { moc });
   },
 
-  async deleteMocList(id: string): Promise<void> {
+  async deleteMocList(id: string): Promise<ApiResponse<void>> {
     return wrapInvoke("delete_moc_list", { id });
   },
 
-  async compareMocInventory(mocId: string): Promise<MocList> {
+  async compareMocInventory(mocId: string): Promise<ApiResponse<MocList>> {
     return wrapInvoke("compare_moc_inventory", { mocId });
   },
 
-  async getStats(): Promise<StatsData> {
+  async getStats(): Promise<ApiResponse<StatsData>> {
     return wrapInvoke("get_stats");
   },
 
-  async exportParts(format: "json" | "csv", partIds?: string[]): Promise<string> {
+  async exportParts(format: "json" | "csv", partIds?: string[]): Promise<ApiResponse<string>> {
     return wrapInvoke("export_parts", { format, partIds });
   },
 
-  async importParts(format: "json" | "csv", data: string): Promise<{ imported: number; errors: string[] }> {
+  async importParts(format: "json" | "csv", data: string): Promise<ApiResponse<{ imported: number; errors: string[] }>> {
     return wrapInvoke("import_parts", { format, data });
   },
 
-  async savePartImage(partId: string, imageData: string): Promise<string> {
+  async savePartImage(partId: string, imageData: string): Promise<ApiResponse<string>> {
     return wrapInvoke("save_part_image", { partId, imageData });
   },
 
-  async deletePartImage(partId: string): Promise<void> {
+  async deletePartImage(partId: string): Promise<ApiResponse<void>> {
     return wrapInvoke("delete_part_image", { partId });
   },
 
-  async getPartImagePath(partId: string): Promise<string | null> {
+  async getPartImagePath(partId: string): Promise<ApiResponse<string | null>> {
     return wrapInvoke("get_part_image_path", { partId });
   },
 
-  async changeMocStatus(change: MocStatusChange): Promise<MocList> {
+  async changeMocStatus(change: MocStatusChange): Promise<ApiResponse<MocList>> {
     return wrapInvoke("change_moc_status", { change });
   },
 
-  async getMocStatusLogs(mocId: string): Promise<MocStatusLog[]> {
+  async getMocStatusLogs(mocId: string): Promise<ApiResponse<MocStatusLog[]>> {
     return wrapInvoke("get_moc_status_logs", { mocId });
   },
 
-  async saveMocCoverImage(mocId: string, imageData: string): Promise<string> {
+  async saveMocCoverImage(mocId: string, imageData: string): Promise<ApiResponse<string>> {
     return wrapInvoke("save_moc_cover_image", { mocId, imageData });
   },
 
-  async deleteMocCoverImage(mocId: string): Promise<void> {
+  async deleteMocCoverImage(mocId: string): Promise<ApiResponse<void>> {
     return wrapInvoke("delete_moc_cover_image", { mocId });
   },
 
-  async getOperationLogs(filter?: OperationLogFilter): Promise<OperationLog[]> {
+  async getOperationLogs(filter?: OperationLogFilter): Promise<ApiResponse<OperationLog[]>> {
     return wrapInvoke("get_operation_logs", { filter });
   },
 
-  async createBackup(password?: string): Promise<BackupInfo> {
+  async createBackup(password?: string): Promise<ApiResponse<BackupInfo>> {
     return wrapInvoke("create_backup", { password: password || null });
   },
 
-  async listBackups(): Promise<BackupInfo[]> {
+  async listBackups(): Promise<ApiResponse<BackupInfo[]>> {
     return wrapInvoke("list_backups");
   },
 
-  async restoreBackup(filename: string, password?: string, mode: "full" | "merge" = "full"): Promise<RestoreResult> {
+  async restoreBackup(filename: string, password?: string, mode: "full" | "merge" = "full"): Promise<ApiResponse<RestoreResult>> {
     return wrapInvoke("restore_backup", { filename, password: password || null, mode });
   },
 
-  async deleteBackup(filename: string): Promise<void> {
+  async deleteBackup(filename: string): Promise<ApiResponse<void>> {
     return wrapInvoke("delete_backup", { filename });
   },
 
-  async getBackupConfig(): Promise<BackupConfig> {
+  async getBackupConfig(): Promise<ApiResponse<BackupConfig>> {
     return wrapInvoke("get_backup_config");
   },
 
-  async updateBackupConfig(config: BackupConfig): Promise<void> {
+  async updateBackupConfig(config: BackupConfig): Promise<ApiResponse<void>> {
     return wrapInvoke("update_backup_config", { config });
   },
 
-  async checkDatabaseIntegrity(): Promise<IntegrityCheckResult> {
+  async checkDatabaseIntegrity(): Promise<ApiResponse<IntegrityCheckResult>> {
     return wrapInvoke("check_database_integrity");
   },
 
-  async exportBackupToPath(filename: string, destDir: string): Promise<string> {
+  async exportBackupToPath(filename: string, destDir: string): Promise<ApiResponse<string>> {
     return wrapInvoke("export_backup_to_path", { filename, destDir });
   },
 
-  async importBackupFromPath(srcPath: string): Promise<BackupInfo> {
+  async importBackupFromPath(srcPath: string): Promise<ApiResponse<BackupInfo>> {
     return wrapInvoke("import_backup_from_path", { srcPath });
   },
 
-  async shouldAutoBackup(): Promise<boolean> {
+  async shouldAutoBackup(): Promise<ApiResponse<boolean>> {
     return wrapInvoke("should_auto_backup");
   },
 };

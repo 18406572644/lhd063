@@ -10,7 +10,10 @@ export const useStatsStore = defineStore("stats", () => {
   async function loadStats() {
     loading.value = true;
     try {
-      stats.value = await api.getStats();
+      const response = await api.getStats();
+      if (response.success) {
+        stats.value = response.data;
+      }
     } finally {
       loading.value = false;
     }

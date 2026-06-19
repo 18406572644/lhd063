@@ -62,7 +62,9 @@ const handleFileChange: UploadProps["onChange"] = (uploadFile) => {
       const base64 = (e.target?.result as string).split(",")[1];
       try {
         appStore.startLoading("正在上传图片...");
-        const path = await api.savePartImage(props.partId, base64);
+        const response = await api.savePartImage(props.partId, base64);
+        if (!response.success) throw new Error(response.error?.message || "上传失败");
+        const path = response.data;
         imageUrl.value = `file://${path}`;
         uploadVisible.value = false;
         fileList.value = [];
@@ -132,7 +134,9 @@ function handleDrop(e: DragEvent) {
         const base64 = (ev.target?.result as string).split(",")[1];
         try {
           appStore.startLoading("正在上传图片...");
-          const path = await api.savePartImage(props.partId, base64);
+          const response = await api.savePartImage(props.partId, base64);
+          if (!response.success) throw new Error(response.error?.message || "上传失败");
+          const path = response.data;
           imageUrl.value = `file://${path}`;
           appStore.showSuccess("图片上传成功");
 

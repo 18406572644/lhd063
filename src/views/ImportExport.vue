@@ -10,10 +10,14 @@ import {
 } from "@element-plus/icons-vue";
 import { usePartsStore, useAppStore } from "@/stores";
 import { api } from "@/api";
+import { useApiRequest } from "@/composables";
 import Papa from "papaparse";
 
 const partsStore = usePartsStore();
 const appStore = useAppStore();
+
+const exportRequest = useApiRequest();
+const importRequest = useApiRequest();
 
 const activeTab = ref("export");
 const exportFormat = ref<"json" | "csv">("json");
@@ -22,15 +26,16 @@ const selectedPartIds = ref<string[]>([]);
 
 const importFormat = ref<"json" | "csv">("json");
 const importResult = ref<{ imported: number; errors: string[] } | null>(null);
-const isImporting = ref(false);
+const isImporting = importRequest.loading;
 
 async function handleExport() {
-  appStore.startLoading("正在导出数据...");
-  try {
-    const partIds = exportAll.value ? undefined : selectedPartIds.value;
-    const data = await api.exportParts(exportFormat.value, partIds);
+  const partIds = exportAll.value ? undefined : selectedPartIds.value;
+  const response = await exportRequest.execute(() =>
+    api.exportParts(exportFormat.value, partIds)
+  );
 
-    const blob = new Blob([data], {
+  if (response.success && response.data) {
+    const blob = new Blob([response.data], {
       type: exportFormat.value === "json" ? "application/json" : "text/csv",
     });
     const url = URL.createObjectURL(blob);
@@ -43,11 +48,6 @@ async function handleExport() {
     URL.revokeObjectURL(url);
 
     appStore.showSuccess("导出成功");
-  } catch (error) {
-    console.error("Export failed:", error);
-    appStore.showError("导出失败");
-  } finally {
-    appStore.stopLoading();
   }
 }
 
@@ -56,35 +56,30 @@ async function handleFileUpload(event: Event) {
   const file = input.files?.[0];
   if (!file) return;
 
-  isImporting.value = true;
   importResult.value = null;
-  appStore.startLoading("正在导入数据...");
 
   try {
     const text = await file.text();
+    const response = await importRequest.execute(() =>
+      api.importParts(importFormat.value, text)
+    );
 
-    if (importFormat.value === "csv") {
-      const result = await api.importParts("csv", text);
-      importResult.value = result;
-    } else {
-      const result = await api.importParts("json", text);
-      importResult.value = result;
-    }
+    if (response.success && response.data) {
+      importResult.value = response.data;
 
-    if (importResult.value.imported > 0) {
-      appStore.showSuccess(`成功导入 ${importResult.value.imported} 条数据`);
-      await partsStore.loadParts();
-    }
+      if (importResult.value.imported > 0) {
+        appStore.showSuccess(`成功导入 ${importResult.value.imported} 条数据`);
+        await partsStore.loadParts();
+      }
 
-    if (importResult.value.errors.length > 0) {
-      appStore.showWarning(`有 ${importResult.value.errors.length} 条数据导入失败`);
+      if (importResult.value.errors.length > 0) {
+        appStore.showWarning(`有 ${importResult.value.errors.length} 条数据导入失败`);
+      }
     }
   } catch (error) {
     console.error("Import failed:", error);
     appStore.showError("导入失败，请检查文件格式");
   } finally {
-    appStore.stopLoading();
-    isImporting.value = false;
     input.value = "";
   }
 }
