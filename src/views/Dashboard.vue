@@ -8,10 +8,12 @@ import {
   Warning,
   TrendCharts,
   Setting,
+  Calendar,
 } from "@element-plus/icons-vue";
 import { useStatsStore, usePartsStore, useMocStore, useMasterDataStore } from "@/stores";
 import { useRouter } from "vue-router";
-import type { TypeCount, ColorCount, LocationCount } from "@/types";
+import type { TypeCount, ColorCount, LocationCount, MocStatusCount } from "@/types";
+import { MOC_STATUS_OPTIONS } from "@/types";
 
 const statsStore = useStatsStore();
 const partsStore = usePartsStore();
@@ -80,6 +82,13 @@ const statCards = computed(() => {
       color: "danger",
       path: "/moc",
     },
+    {
+      title: "MOC 状态分布",
+      value: `${statsStore.stats.mocsByStatus.length} 状态`,
+      icon: Calendar,
+      color: "success",
+      path: "/moc",
+    },
   ];
 });
 
@@ -98,6 +107,11 @@ const partsByLocationData = computed(() => {
   return statsStore.stats.partsByLocation.slice(0, 5).filter((l: LocationCount) => l.count > 0);
 });
 
+const mocsByStatusData = computed(() => {
+  if (!statsStore.stats) return [] as MocStatusCount[];
+  return statsStore.stats.mocsByStatus.filter((m: MocStatusCount) => m.count > 0);
+});
+
 function getMaxTypeCount() {
   if (!partsByTypeData.value.length) return 1;
   return Math.max(...partsByTypeData.value.map((t: TypeCount) => t.count));
@@ -106,6 +120,21 @@ function getMaxTypeCount() {
 function getMaxLocationCount() {
   if (!partsByLocationData.value.length) return 1;
   return Math.max(...partsByLocationData.value.map((l: LocationCount) => l.count));
+}
+
+function getMaxMocStatusCount() {
+  if (!mocsByStatusData.value.length) return 1;
+  return Math.max(...mocsByStatusData.value.map((m: MocStatusCount) => m.count));
+}
+
+function getMocStatusLabel(status: string) {
+  const option = MOC_STATUS_OPTIONS.find((opt) => opt.value === status);
+  return option ? option.label : status;
+}
+
+function getMocStatusColor(status: string) {
+  const option = MOC_STATUS_OPTIONS.find((opt) => opt.value === status);
+  return option ? option.color : "#909399";
 }
 
 function goTo(path: string) {
@@ -238,6 +267,40 @@ onMounted(() => {
             </div>
           </div>
         </div>
+
+        <div class="chart-card brick-card">
+          <div class="chart-header">
+            <h3>MOC 状态分布</h3>
+            <span class="chart-subtitle">按状态统计 MOC 清单数量</span>
+          </div>
+          <div class="chart-body">
+            <div v-if="mocsByStatusData.length === 0" class="empty-chart">
+              暂无数据
+            </div>
+            <div v-else class="bar-chart horizontal moc-status">
+              <div
+                v-for="item in mocsByStatusData"
+                :key="item.status"
+                class="bar-item-h"
+              >
+                <span class="bar-label-h">{{ getMocStatusLabel(item.status) }}</span>
+                <div class="bar-track-h">
+                  <div
+                    class="bar-fill-h"
+                    :style="{
+                      width: `${(item.count / getMaxMocStatusCount()) * 100}%`,
+                      background: `linear-gradient(90deg, ${getMocStatusColor(item.status)}, ${getMocStatusColor(item.status)}cc)`,
+                    }"
+                  ></div>
+                </div>
+                <span
+                  class="bar-value-h"
+                  :style="{ color: getMocStatusColor(item.status) }"
+                >{{ item.count }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
       <div class="quick-section">
@@ -275,7 +338,7 @@ onMounted(() => {
 
 .stats-grid {
   display: grid;
-  grid-template-columns: repeat(6, 1fr);
+  grid-template-columns: repeat(7, 1fr);
   gap: $spacing-lg;
   margin-bottom: $spacing-lg;
 }
@@ -568,7 +631,7 @@ onMounted(() => {
 
 @media (max-width: 1400px) {
   .stats-grid {
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(4, 1fr);
   }
 
   .charts-section {

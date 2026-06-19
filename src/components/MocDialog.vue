@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from "vue";
-import { Plus, Delete, Search } from "@element-plus/icons-vue";
+import { Plus, Delete, Search, Upload, Close } from "@element-plus/icons-vue";
 import type { FormInstance, FormRules } from "element-plus";
 import { usePartsStore, useMasterDataStore } from "@/stores";
-import type { MocList, MocPart } from "@/types";
+import type { MocList, MocPart, MocStatus } from "@/types";
+import { MOC_STATUS_OPTIONS } from "@/types";
 
 const props = defineProps<{
   modelValue: boolean;
@@ -21,9 +22,12 @@ const partsStore = usePartsStore();
 const masterDataStore = useMasterDataStore();
 
 const formRef = ref<FormInstance>();
+const coverImageInput = ref<HTMLInputElement>();
 const formData = ref({
   name: "",
   description: "",
+  coverImage: undefined as string | undefined,
+  status: "planning" as MocStatus,
 });
 
 const rules: FormRules = {
@@ -88,10 +92,39 @@ function getColorHex(colorName: string) {
   return masterDataStore.getPartColorHex(colorName);
 }
 
+function handleCoverImageClick() {
+  coverImageInput.value?.click();
+}
+
+function handleCoverImageChange(e: Event) {
+  const input = e.target as HTMLInputElement;
+  const file = input.files?.[0];
+  if (!file) return;
+
+  if (!file.type.startsWith("image/")) {
+    alert("请选择图片文件");
+    input.value = "";
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    formData.value.coverImage = ev.target?.result as string;
+  };
+  reader.readAsDataURL(file);
+  input.value = "";
+}
+
+function handleRemoveCoverImage() {
+  formData.value.coverImage = undefined;
+}
+
 function resetForm() {
   formData.value = {
     name: "",
     description: "",
+    coverImage: undefined,
+    status: "planning",
   };
   mocParts.value = [];
   searchKeyword.value = "";
@@ -111,6 +144,8 @@ async function handleSubmit() {
       emit("save", {
         name: formData.value.name.trim(),
         description: formData.value.description.trim() || undefined,
+        coverImagePath: formData.value.coverImage,
+        status: props.moc ? formData.value.status : "planning",
         parts: mocParts.value.map((p) => ({
           ...p,
           inStock: 0,
@@ -129,6 +164,8 @@ watch(
         formData.value = {
           name: props.moc.name,
           description: props.moc.description || "",
+          coverImage: props.moc.coverImagePath,
+          status: props.moc.status,
         };
         mocParts.value = [...props.moc.parts];
       } else {
@@ -163,6 +200,38 @@ onMounted(() => {
     </template>
 
     <div class="moc-form">
+      <div class="cover-image-section">
+        <div
+          class="cover-preview"
+          @click="handleCoverImageClick"
+        >
+          <img
+            v-if="formData.coverImage"
+            :src="formData.coverImage"
+            alt="封面图片"
+            class="cover-image"
+          />
+          <template v-else>
+            <el-icon class="upload-icon"><Upload /></el-icon>
+            <p class="upload-text">点击上传封面</p>
+          </template>
+          <button
+            v-if="formData.coverImage"
+            class="remove-cover-btn"
+            @click.stop="handleRemoveCoverImage"
+          >
+            <el-icon><Close /></el-icon>
+          </button>
+        </div>
+        <input
+          ref="coverImageInput"
+          type="file"
+          accept="image/jpeg,image/png,image/jpg"
+          style="display: none"
+          @change="handleCoverImageChange"
+        />
+      </div>
+
       <el-form
         ref="formRef"
         :model="formData"
@@ -182,6 +251,16 @@ onMounted(() => {
             :rows="2"
             placeholder="请输入描述说明（可选）"
           />
+        </el-form-item>
+        <el-form-item v-if="moc" label="状态">
+          <el-select v-model="formData.status" class="w-full">
+            <el-option
+              v-for="option in MOC_STATUS_OPTIONS"
+              :key="option.value"
+              :label="option.label"
+              :value="option.value"
+            />
+          </el-select>
         </el-form-item>
       </el-form>
 
@@ -300,6 +379,84 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   gap: $spacing-lg;
+}
+
+.cover-image-section {
+  display: flex;
+  justify-content: center;
+}
+
+.cover-preview {
+  position: relative;
+  width: 100%;
+  max-width: 300px;
+  height: 169px;
+  background: $color-dark;
+  border: 1px solid $color-dark-border;
+  border-radius: $brick-radius;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  overflow: hidden;
+  transition: all $transition-fast;
+
+  &:hover {
+    border-color: $color-primary;
+
+    .upload-icon,
+    .upload-text {
+      color: $color-primary;
+    }
+  }
+
+  .cover-image {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .upload-icon {
+    font-size: 40px;
+    color: $color-gray-dark;
+    margin-bottom: $spacing-xs;
+    transition: color $transition-fast;
+  }
+
+  .upload-text {
+    color: $color-gray-dark;
+    font-size: $font-size-sm;
+    margin: 0;
+    transition: color $transition-fast;
+  }
+
+  .remove-cover-btn {
+    position: absolute;
+    top: $spacing-xs;
+    right: $spacing-xs;
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: $color-danger;
+    border: none;
+    border-radius: 50%;
+    color: $color-white;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity $transition-fast;
+    z-index: 1;
+
+    &:hover {
+      background: darken($color-danger, 10%);
+    }
+  }
+
+  &:hover .remove-cover-btn {
+    opacity: 1;
+  }
 }
 
 .parts-section,
@@ -490,5 +647,9 @@ onMounted(() => {
   align-items: center;
   gap: $spacing-sm;
   flex-shrink: 0;
+}
+
+:deep(.w-full) {
+  width: 100%;
 }
 </style>

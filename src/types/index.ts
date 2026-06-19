@@ -43,13 +43,47 @@ export interface Location {
   parentId?: string;
 }
 
+export type MocStatus =
+  | "planning"
+  | "purchasing"
+  | "parts_ready"
+  | "building"
+  | "completed"
+  | "archived";
+
+export const MOC_STATUS_OPTIONS: { value: MocStatus; label: string; color: string; type: "info" | "warning" | "primary" | "success" | "danger" }[] = [
+  { value: "planning", label: "规划中", color: "#909399", type: "info" },
+  { value: "purchasing", label: "采购中", color: "#E6A23C", type: "warning" },
+  { value: "parts_ready", label: "零件齐套", color: "#67C23A", type: "success" },
+  { value: "building", label: "搭建中", color: "#409EFF", type: "primary" },
+  { value: "completed", label: "已完成", color: "#67C23A", type: "success" },
+  { value: "archived", label: "已归档", color: "#909399", type: "info" },
+];
+
 export interface MocList {
   id: string;
   name: string;
   description?: string;
+  coverImagePath?: string;
+  status: MocStatus;
   parts: MocPart[];
   createdAt: string;
   updatedAt: string;
+}
+
+export interface MocStatusLog {
+  id: string;
+  mocId: string;
+  oldStatus?: string;
+  newStatus: string;
+  changedAt: string;
+  remark?: string;
+}
+
+export interface MocStatusChange {
+  mocId: string;
+  newStatus: MocStatus;
+  remark?: string;
 }
 
 export interface MocPart {
@@ -70,6 +104,11 @@ export interface PartFilter {
   keyword?: string;
 }
 
+export interface MocStatusCount {
+  status: string;
+  count: number;
+}
+
 export interface StatsData {
   totalParts: number;
   totalQuantity: number;
@@ -82,6 +121,7 @@ export interface StatsData {
   partsByType: { name: string; count: number }[];
   partsByColor: { name: string; count: number; hex: string }[];
   partsByLocation: { name: string; count: number }[];
+  mocsByStatus: MocStatusCount[];
 }
 
 export interface ImportExportPart {

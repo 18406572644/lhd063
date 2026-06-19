@@ -2,6 +2,52 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use chrono::{DateTime, Utc};
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(rename_all = "camelCase")]
+pub enum MocStatus {
+    Planning,
+    Purchasing,
+    PartsReady,
+    Building,
+    Completed,
+    Archived,
+}
+
+impl MocStatus {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            MocStatus::Planning => "planning",
+            MocStatus::Purchasing => "purchasing",
+            MocStatus::PartsReady => "parts_ready",
+            MocStatus::Building => "building",
+            MocStatus::Completed => "completed",
+            MocStatus::Archived => "archived",
+        }
+    }
+
+    pub fn from_str(s: &str) -> Self {
+        match s {
+            "purchasing" => MocStatus::Purchasing,
+            "parts_ready" => MocStatus::PartsReady,
+            "building" => MocStatus::Building,
+            "completed" => MocStatus::Completed,
+            "archived" => MocStatus::Archived,
+            _ => MocStatus::Planning,
+        }
+    }
+
+    pub fn order(&self) -> i32 {
+        match self {
+            MocStatus::Planning => 0,
+            MocStatus::Purchasing => 1,
+            MocStatus::PartsReady => 2,
+            MocStatus::Building => 3,
+            MocStatus::Completed => 4,
+            MocStatus::Archived => 5,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Part {
@@ -149,6 +195,8 @@ pub struct MocList {
     pub id: String,
     pub name: String,
     pub description: Option<String>,
+    pub cover_image_path: Option<String>,
+    pub status: MocStatus,
     pub parts: Vec<MocPart>,
     pub created_at: String,
     pub updated_at: String,
@@ -158,6 +206,7 @@ impl MocList {
     pub fn new(
         name: String,
         description: Option<String>,
+        cover_image_path: Option<String>,
         parts: Vec<MocPart>,
     ) -> Self {
         let now: DateTime<Utc> = Utc::now();
@@ -165,6 +214,8 @@ impl MocList {
             id: Uuid::new_v4().to_string(),
             name,
             description,
+            cover_image_path,
+            status: MocStatus::Planning,
             parts,
             created_at: now.to_rfc3339(),
             updated_at: now.to_rfc3339(),
@@ -175,6 +226,17 @@ impl MocList {
         let now: DateTime<Utc> = Utc::now();
         self.updated_at = now.to_rfc3339();
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MocStatusLog {
+    pub id: String,
+    pub moc_id: String,
+    pub old_status: Option<String>,
+    pub new_status: String,
+    pub changed_at: String,
+    pub remark: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -213,6 +275,14 @@ pub struct StatsData {
     pub parts_by_type: Vec<TypeCount>,
     pub parts_by_color: Vec<ColorCount>,
     pub parts_by_location: Vec<LocationCount>,
+    pub mocs_by_status: Vec<MocStatusCount>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MocStatusCount {
+    pub status: String,
+    pub count: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -371,19 +441,25 @@ impl LocationForCreate {
 pub struct MocListForCreate {
     pub name: String,
     pub description: Option<String>,
+    pub cover_image_path: Option<String>,
     pub parts: Vec<MocPart>,
 }
 
 impl MocListForCreate {
     pub fn into_moc_list(self) -> MocList {
-        let now: DateTime<Utc> = Utc::now();
-        MocList {
-            id: Uuid::new_v4().to_string(),
-            name: self.name,
-            description: self.description,
-            parts: self.parts,
-            created_at: now.to_rfc3339(),
-            updated_at: now.to_rfc3339(),
-        }
+        MocList::new(
+            self.name,
+            self.description,
+            self.cover_image_path,
+            self.parts,
+        )
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MocStatusChange {
+    pub moc_id: String,
+    pub new_status: MocStatus,
+    pub remark: Option<String>,
 }

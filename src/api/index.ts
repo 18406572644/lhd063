@@ -6,6 +6,9 @@ import type {
   PartSize,
   Location,
   MocList,
+  MocStatus,
+  MocStatusChange,
+  MocStatusLog,
   PartFilter,
   StatsData,
 } from "@/types";
@@ -60,6 +63,11 @@ function getMockData(command: string, args?: Record<string, unknown>): unknown {
       { name: "抽屉 1", count: 12 },
       { name: "抽屉 2", count: 3 },
       { name: "展示架", count: 2 },
+    ],
+    mocsByStatus: [
+      { status: "planning", count: 1 },
+      { status: "building", count: 1 },
+      { status: "completed", count: 1 },
     ],
   };
 
@@ -184,6 +192,7 @@ function getMockData(command: string, args?: Record<string, unknown>): unknown {
       id: "1",
       name: "迷你机器人",
       description: "一个可爱的小型机器人 MOC",
+      status: "planning",
       parts: [
         { partId: "1", partNumber: "3001", partName: "2x4 基础砖", color: "红色", quantity: 10, inStock: 150, isMissing: false },
         { partId: "2", partNumber: "3023", partName: "1x2 板", color: "蓝色", quantity: 20, inStock: 200, isMissing: false },
@@ -196,6 +205,7 @@ function getMockData(command: string, args?: Record<string, unknown>): unknown {
       id: "2",
       name: "小汽车",
       description: "经典 LEGO 小汽车 MOC",
+      status: "building",
       parts: [
         { partId: "3", partNumber: "3705", partName: "十字轴", color: "黑色", quantity: 4, inStock: 50, isMissing: false },
         { partId: "4", partNumber: "3647", partName: "8齿齿轮", color: "浅灰", quantity: 8, inStock: 25, isMissing: false },
@@ -207,6 +217,7 @@ function getMockData(command: string, args?: Record<string, unknown>): unknown {
       id: "3",
       name: "小房子",
       description: "温馨的小房子 MOC",
+      status: "completed",
       parts: [
         { partId: "1", partNumber: "3001", partName: "2x4 基础砖", color: "红色", quantity: 50, inStock: 150, isMissing: false },
         { partId: "5", partNumber: "3039", partName: "2x2 斜面砖", color: "黄色", quantity: 30, inStock: 80, isMissing: false },
@@ -214,6 +225,25 @@ function getMockData(command: string, args?: Record<string, unknown>): unknown {
       ],
       createdAt: now,
       updatedAt: now,
+    },
+  ];
+
+  const mockStatusLogs: MocStatusLog[] = [
+    {
+      id: "log1",
+      mocId: "2",
+      oldStatus: "planning",
+      newStatus: "purchasing",
+      changedAt: now,
+      remark: "开始采购零件",
+    },
+    {
+      id: "log2",
+      mocId: "2",
+      oldStatus: "purchasing",
+      newStatus: "building",
+      changedAt: now,
+      remark: "零件齐套，开始搭建",
     },
   ];
 
@@ -262,6 +292,20 @@ function getMockData(command: string, args?: Record<string, unknown>): unknown {
       return Promise.resolve("mock-image-path");
     case "get_part_image_path":
       return Promise.resolve(null);
+    case "change_moc_status": {
+      const change = args?.change as MocStatusChange | undefined;
+      const moc = mockMocs.find(m => m.id === change?.mocId);
+      if (moc && change) {
+        moc.status = change.newStatus as MocStatus;
+      }
+      return Promise.resolve(moc || mockMocs[0]);
+    }
+    case "get_moc_status_logs":
+      return Promise.resolve(mockStatusLogs);
+    case "save_moc_cover_image":
+      return Promise.resolve("mock-moc-cover-path");
+    case "delete_moc_cover_image":
+      return Promise.resolve();
     default:
       return Promise.resolve({});
   }
@@ -410,5 +454,21 @@ export const api = {
 
   async getPartImagePath(partId: string): Promise<string | null> {
     return wrapInvoke("get_part_image_path", { partId });
+  },
+
+  async changeMocStatus(change: MocStatusChange): Promise<MocList> {
+    return wrapInvoke("change_moc_status", { change });
+  },
+
+  async getMocStatusLogs(mocId: string): Promise<MocStatusLog[]> {
+    return wrapInvoke("get_moc_status_logs", { mocId });
+  },
+
+  async saveMocCoverImage(mocId: string, imageData: string): Promise<string> {
+    return wrapInvoke("save_moc_cover_image", { mocId, imageData });
+  },
+
+  async deleteMocCoverImage(mocId: string): Promise<void> {
+    return wrapInvoke("delete_moc_cover_image", { mocId });
   },
 };

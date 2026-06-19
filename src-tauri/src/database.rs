@@ -2,6 +2,7 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 
 use base64::Engine;
+use chrono::{DateTime, Utc};
 use rusqlite::{params, Connection, OptionalExtension};
 use tauri::Manager;
 use uuid::Uuid;
@@ -36,6 +37,10 @@ impl Database {
         let images_dir = app_dir.join("images");
         std::fs::create_dir_all(&images_dir)
             .map_err(|e| format!("Failed to create images dir: {}", e))?;
+
+        let moc_images_dir = images_dir.join("moc");
+        std::fs::create_dir_all(&moc_images_dir)
+            .map_err(|e| format!("Failed to create moc images dir: {}", e))?;
 
         *self.app_data_dir.lock().unwrap() = Some(app_dir.clone());
 
@@ -127,6 +132,8 @@ impl Database {
                 id TEXT PRIMARY KEY,
                 name TEXT NOT NULL,
                 description TEXT,
+                cover_image_path TEXT,
+                status TEXT NOT NULL DEFAULT 'planning',
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
             );
@@ -143,9 +150,49 @@ impl Database {
             );
 
             CREATE INDEX IF NOT EXISTS idx_moc_parts_moc_id ON moc_parts(moc_id);
+
+            CREATE TABLE IF NOT EXISTS moc_status_logs (
+                id TEXT PRIMARY KEY,
+                moc_id TEXT NOT NULL,
+                old_status TEXT,
+                new_status TEXT NOT NULL,
+                changed_at TEXT NOT NULL,
+                remark TEXT,
+                FOREIGN KEY (moc_id) REFERENCES moc_lists(id) ON DELETE CASCADE
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_moc_status_logs_moc_id ON moc_status_logs(moc_id);
             ",
         )
         .map_err(|e| format!("Failed to create tables: {}", e))?;
+
+        self.run_migrations(conn)?;
+
+        Ok(())
+    }
+
+    fn run_migrations(&self, conn: &Connection) -> Result<(), String> {
+        let columns: Vec<String> = conn
+            .prepare("PRAGMA table_info(moc_lists)")
+            .map_err(|e| format!("Failed to prepare pragma: {}", e))?
+            .query_map([], |row| row.get::<_, String>(1))
+            .map_err(|e| format!("Failed to query columns: {}", e))?
+            .filter_map(|r| r.ok())
+            .collect();
+
+        if !columns.iter().any(|c| c == "cover_image_path") {
+            conn.execute_batch(
+                "ALTER TABLE moc_lists ADD COLUMN cover_image_path TEXT;",
+            )
+            .map_err(|e| format!("Failed to add cover_image_path column: {}", e))?;
+        }
+
+        if !columns.iter().any(|c| c == "status") {
+            conn.execute_batch(
+                "ALTER TABLE moc_lists ADD COLUMN status TEXT NOT NULL DEFAULT 'planning';",
+            )
+            .map_err(|e| format!("Failed to add status column: {}", e))?;
+        }
 
         Ok(())
     }
@@ -821,7 +868,7 @@ impl Database {
         let conn = conn_guard.as_ref().unwrap();
 
         let mut stmt = conn
-            .prepare("SELECT id, name, description, created_at, updated_at FROM moc_lists ORDER BY updated_at DESC")
+            .prepare("SELECT id, name, description, cover_image_path, status, created_at, updated_at FROM moc_lists ORDER BY updated_at DESC")
             .map_err(|e| format!("Failed to prepare query: {}", e))?;
 
         let rows = stmt
@@ -830,15 +877,17 @@ impl Database {
                     row.get::<_, String>(0)?,
                     row.get::<_, String>(1)?,
                     row.get::<_, Option<String>>(2)?,
-                    row.get::<_, String>(3)?,
+                    row.get::<_, Option<String>>(3)?,
                     row.get::<_, String>(4)?,
+                    row.get::<_, String>(5)?,
+                    row.get::<_, String>(6)?,
                 ))
             })
             .map_err(|e| format!("Failed to query moc lists: {}", e))?;
 
         let mut moc_lists = Vec::new();
         for row in rows {
-            let (id, name, description, created_at, updated_at) =
+            let (id, name, description, cover_image_path, status, created_at, updated_at) =
                 row.map_err(|e| format!("Failed to read moc list: {}", e))?;
 
             let parts = self.get_moc_parts(conn, &id)?;
@@ -847,6 +896,8 @@ impl Database {
                 id,
                 name,
                 description,
+                cover_image_path,
+                status: MocStatus::from_str(&status),
                 parts,
                 created_at,
                 updated_at,
@@ -891,27 +942,31 @@ impl Database {
 
         let moc_info = conn
             .query_row(
-                "SELECT id, name, description, created_at, updated_at FROM moc_lists WHERE id = ?1",
+                "SELECT id, name, description, cover_image_path, status, created_at, updated_at FROM moc_lists WHERE id = ?1",
                 params![id],
                 |row| {
                     Ok((
                         row.get::<_, String>(0)?,
                         row.get::<_, String>(1)?,
                         row.get::<_, Option<String>>(2)?,
-                        row.get::<_, String>(3)?,
+                        row.get::<_, Option<String>>(3)?,
                         row.get::<_, String>(4)?,
+                        row.get::<_, String>(5)?,
+                        row.get::<_, String>(6)?,
                     ))
                 },
             )
             .optional()
             .map_err(|e| format!("Failed to query moc list: {}", e))?;
 
-        Ok(moc_info.map(|(id, name, description, created_at, updated_at)| {
+        Ok(moc_info.map(|(id, name, description, cover_image_path, status, created_at, updated_at)| {
             let parts = self.get_moc_parts(conn, &id).unwrap_or_default();
             MocList {
                 id,
                 name,
                 description,
+                cover_image_path,
+                status: MocStatus::from_str(&status),
                 parts,
                 created_at,
                 updated_at,
@@ -930,10 +985,18 @@ impl Database {
             .map_err(|e| format!("Failed to start transaction: {}", e))?;
 
         tx.execute(
-            "INSERT INTO moc_lists (id, name, description, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5)",
-            params![moc.id, moc.name, moc.description, moc.created_at, moc.updated_at],
+            "INSERT INTO moc_lists (id, name, description, cover_image_path, status, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            params![moc.id, moc.name, moc.description, moc.cover_image_path, moc.status.as_str(), moc.created_at, moc.updated_at],
         )
         .map_err(|e| format!("Failed to insert moc list: {}", e))?;
+
+        self.insert_status_log(
+            &tx,
+            &moc.id,
+            None,
+            moc.status.as_str(),
+            Some("创建 MOC 清单".to_string()),
+        )?;
 
         for part in &moc.parts {
             let part_id = Uuid::new_v4().to_string();
@@ -970,8 +1033,8 @@ impl Database {
             .map_err(|e| format!("Failed to start transaction: {}", e))?;
 
         tx.execute(
-            "UPDATE moc_lists SET name = ?1, description = ?2, updated_at = ?3 WHERE id = ?4",
-            params![moc.name, moc.description, moc.updated_at, moc.id],
+            "UPDATE moc_lists SET name = ?1, description = ?2, cover_image_path = ?3, status = ?4, updated_at = ?5 WHERE id = ?6",
+            params![moc.name, moc.description, moc.cover_image_path, moc.status.as_str(), moc.updated_at, moc.id],
         )
         .map_err(|e| format!("Failed to update moc list: {}", e))?;
 
@@ -1004,6 +1067,13 @@ impl Database {
     pub fn delete_moc_list(&self, id: &str) -> Result<(), String> {
         let conn_guard = self.get_conn()?;
         let conn = conn_guard.as_ref().unwrap();
+
+        if let Some(app_dir) = self.app_data_dir.lock().unwrap().as_ref() {
+            let image_path = app_dir.join("images").join("moc").join(format!("{}.jpg", id));
+            if image_path.exists() {
+                let _ = std::fs::remove_file(&image_path);
+            }
+        }
 
         conn.execute("DELETE FROM moc_lists WHERE id = ?1", params![id])
             .map_err(|e| format!("Failed to delete moc list: {}", e))?;
@@ -1048,6 +1118,183 @@ impl Database {
             parts: updated_parts,
             ..moc
         })
+    }
+
+    fn insert_status_log(
+        &self,
+        conn: &Connection,
+        moc_id: &str,
+        old_status: Option<&str>,
+        new_status: &str,
+        remark: Option<String>,
+    ) -> Result<(), String> {
+        use chrono::Utc;
+        let log_id = Uuid::new_v4().to_string();
+        let now: DateTime<Utc> = Utc::now();
+
+        conn.execute(
+            "INSERT INTO moc_status_logs (id, moc_id, old_status, new_status, changed_at, remark) 
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![
+                log_id,
+                moc_id,
+                old_status,
+                new_status,
+                now.to_rfc3339(),
+                remark
+            ],
+        )
+        .map_err(|e| format!("Failed to insert status log: {}", e))?;
+
+        Ok(())
+    }
+
+    pub fn change_moc_status(
+        &self,
+        change: MocStatusChange,
+    ) -> Result<MocList, String> {
+        let mut conn_guard = self.get_conn()?;
+        let conn = conn_guard.as_mut().unwrap();
+
+        let moc = self
+            .get_moc_list_by_id(&change.moc_id)?
+            .ok_or_else(|| "MOC list not found".to_string())?;
+
+        let old_status = moc.status.as_str().to_string();
+        let new_status = change.new_status.as_str().to_string();
+
+        if old_status == new_status {
+            return Ok(moc);
+        }
+
+        let tx = conn
+            .transaction()
+            .map_err(|e| format!("Failed to start transaction: {}", e))?;
+
+        use chrono::Utc;
+        let now: DateTime<Utc> = Utc::now();
+        let updated_at = now.to_rfc3339();
+
+        tx.execute(
+            "UPDATE moc_lists SET status = ?1, updated_at = ?2 WHERE id = ?3",
+            params![new_status, updated_at, change.moc_id],
+        )
+        .map_err(|e| format!("Failed to update moc status: {}", e))?;
+
+        self.insert_status_log(
+            &tx,
+            &change.moc_id,
+            Some(&old_status),
+            &new_status,
+            change.remark,
+        )?;
+
+        tx.commit()
+            .map_err(|e| format!("Failed to commit transaction: {}", e))?;
+
+        self.get_moc_list_by_id(&change.moc_id)?
+            .ok_or_else(|| "MOC list not found after update".to_string())
+    }
+
+    pub fn get_moc_status_logs(&self, moc_id: &str) -> Result<Vec<MocStatusLog>, String> {
+        let conn_guard = self.get_conn()?;
+        let conn = conn_guard.as_ref().unwrap();
+
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, moc_id, old_status, new_status, changed_at, remark 
+                 FROM moc_status_logs WHERE moc_id = ?1 ORDER BY changed_at DESC",
+            )
+            .map_err(|e| format!("Failed to prepare query: {}", e))?;
+
+        let rows = stmt
+            .query_map(params![moc_id], |row| {
+                Ok(MocStatusLog {
+                    id: row.get(0)?,
+                    moc_id: row.get(1)?,
+                    old_status: row.get(2)?,
+                    new_status: row.get(3)?,
+                    changed_at: row.get(4)?,
+                    remark: row.get(5)?,
+                })
+            })
+            .map_err(|e| format!("Failed to query status logs: {}", e))?;
+
+        let mut logs = Vec::new();
+        for row in rows {
+            logs.push(row.map_err(|e| format!("Failed to read status log: {}", e))?);
+        }
+
+        Ok(logs)
+    }
+
+    pub fn save_moc_cover_image(&self, moc_id: &str, image_data_base64: &str) -> Result<String, String> {
+        let app_dir = self
+            .app_data_dir
+            .lock()
+            .unwrap()
+            .clone()
+            .ok_or_else(|| "App data dir not initialized".to_string())?;
+
+        let moc_images_dir = app_dir.join("images").join("moc");
+        std::fs::create_dir_all(&moc_images_dir)
+            .map_err(|e| format!("Failed to create moc images dir: {}", e))?;
+
+        let image_path = moc_images_dir.join(format!("{}.jpg", moc_id));
+
+        let image_bytes = base64::engine::general_purpose::STANDARD
+            .decode(image_data_base64)
+            .map_err(|e| format!("Failed to decode base64 image: {}", e))?;
+
+        std::fs::write(&image_path, &image_bytes)
+            .map_err(|e| format!("Failed to write image file: {}", e))?;
+
+        let path_str = image_path
+            .to_str()
+            .ok_or_else(|| "Failed to convert path to string".to_string())?;
+
+        let conn_guard = self.get_conn()?;
+        let conn = conn_guard.as_ref().unwrap();
+
+        use chrono::Utc;
+        let now: DateTime<Utc> = Utc::now();
+
+        conn.execute(
+            "UPDATE moc_lists SET cover_image_path = ?1, updated_at = ?2 WHERE id = ?3",
+            params![path_str, now.to_rfc3339(), moc_id],
+        )
+        .map_err(|e| format!("Failed to update moc cover image path: {}", e))?;
+
+        Ok(path_str.to_string())
+    }
+
+    pub fn delete_moc_cover_image(&self, moc_id: &str) -> Result<(), String> {
+        let app_dir = self
+            .app_data_dir
+            .lock()
+            .unwrap()
+            .clone()
+            .ok_or_else(|| "App data dir not initialized".to_string())?;
+
+        let image_path = app_dir.join("images").join("moc").join(format!("{}.jpg", moc_id));
+        if image_path.exists() {
+            std::fs::remove_file(&image_path)
+                .map_err(|e| format!("Failed to delete image file: {}", e))?;
+        }
+
+        let conn_guard = self.get_conn()?;
+        let conn = conn_guard.as_ref().unwrap();
+
+        use chrono::Utc;
+        let now: DateTime<Utc> = Utc::now();
+
+        conn.execute(
+            "UPDATE moc_lists SET cover_image_path = NULL, updated_at = ?1 WHERE id = ?2",
+            params![now.to_rfc3339(), moc_id],
+        )
+        .map_err(|e| format!("Failed to update moc cover image path: {}", e))?;
+
+        Ok(())
     }
 
     pub fn get_stats(&self) -> Result<StatsData, String> {
@@ -1177,6 +1424,27 @@ impl Database {
             missing_count += moc.parts.iter().filter(|p| p.is_missing).count() as i64;
         }
 
+        let mut mocs_by_status_stmt = conn
+            .prepare(
+                "SELECT status, COUNT(id) as cnt FROM moc_lists GROUP BY status ORDER BY cnt DESC",
+            )
+            .map_err(|e| format!("Failed to prepare mocs by status query: {}", e))?;
+
+        let mocs_by_status_rows = mocs_by_status_stmt
+            .query_map([], |row| {
+                Ok(MocStatusCount {
+                    status: row.get(0)?,
+                    count: row.get(1)?,
+                })
+            })
+            .map_err(|e| format!("Failed to query mocs by status: {}", e))?;
+
+        let mut mocs_by_status = Vec::new();
+        for row in mocs_by_status_rows {
+            mocs_by_status
+                .push(row.map_err(|e| format!("Failed to read status count: {}", e))?);
+        }
+
         Ok(StatsData {
             total_parts,
             total_quantity,
@@ -1189,6 +1457,7 @@ impl Database {
             parts_by_type,
             parts_by_color,
             parts_by_location,
+            mocs_by_status,
         })
     }
 

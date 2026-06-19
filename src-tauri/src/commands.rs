@@ -273,3 +273,36 @@ pub async fn get_part_image_path(
 ) -> Result<Option<String>, String> {
     db.get_part_image_path(&part_id)
 }
+
+#[tauri::command]
+pub async fn change_moc_status(
+    db: State<'_, Database>,
+    change: MocStatusChange,
+) -> Result<MocList, String> {
+    db.change_moc_status(change)
+}
+
+#[tauri::command]
+pub async fn get_moc_status_logs(
+    db: State<'_, Database>,
+    moc_id: String,
+) -> Result<Vec<MocStatusLog>, String> {
+    db.get_moc_status_logs(&moc_id)
+}
+
+#[tauri::command]
+pub async fn save_moc_cover_image(
+    db: State<'_, Database>,
+    moc_id: String,
+    image_data: String,
+) -> Result<String, String> {
+    db.save_moc_cover_image(&moc_id, &image_data)
+}
+
+#[tauri::command]
+pub async fn delete_moc_cover_image(
+    db: State<'_, Database>,
+    moc_id: String,
+) -> Result<(), String> {
+    db.delete_moc_cover_image(&moc_id)
+}

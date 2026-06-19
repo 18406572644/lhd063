@@ -58,6 +58,10 @@ pub fn run() {
             commands::save_part_image,
             commands::delete_part_image,
             commands::get_part_image_path,
+            commands::change_moc_status,
+            commands::get_moc_status_logs,
+            commands::save_moc_cover_image,
+            commands::delete_moc_cover_image,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
