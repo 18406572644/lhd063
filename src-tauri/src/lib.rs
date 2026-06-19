@@ -2,6 +2,7 @@ mod commands;
 mod crypto;
 mod database;
 mod models;
+mod backup;
 
 use database::Database;
 
@@ -63,6 +64,16 @@ pub fn run() {
             commands::save_moc_cover_image,
             commands::delete_moc_cover_image,
             commands::get_operation_logs,
+            commands::create_backup,
+            commands::list_backups,
+            commands::restore_backup,
+            commands::delete_backup,
+            commands::get_backup_config,
+            commands::update_backup_config,
+            commands::check_database_integrity,
+            commands::export_backup_to_path,
+            commands::import_backup_from_path,
+            commands::should_auto_backup,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -326,7 +326,7 @@ impl Database {
         Ok(())
     }
 
-    fn get_conn(&self) -> Result<std::sync::MutexGuard<'_, Option<Connection>>, String> {
+    pub fn get_conn(&self) -> Result<std::sync::MutexGuard<'_, Option<Connection>>, String> {
         let guard = self.conn.lock().unwrap();
         if guard.is_none() {
             return Err("Database not initialized".to_string());

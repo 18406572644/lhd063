@@ -13,6 +13,10 @@ import type {
   StatsData,
   OperationLog,
   OperationLogFilter,
+  BackupInfo,
+  BackupConfig,
+  RestoreResult,
+  IntegrityCheckResult,
 } from "@/types";
 
 function isTauriAvailable(): boolean {
@@ -366,6 +370,48 @@ function getMockData(command: string, args?: Record<string, unknown>): unknown {
       }
       return Promise.resolve(result);
     }
+    case "create_backup":
+      return Promise.resolve({
+        filename: "lego-backup-20260619.lpk",
+        fileSize: 1024000,
+        createdAt: now,
+        encrypted: !!args?.password,
+        version: "1.0",
+      });
+    case "list_backups":
+      return Promise.resolve([
+        { filename: "lego-backup-20260619.lpk", fileSize: 1024000, createdAt: now, encrypted: false, version: "1.0" },
+        { filename: "lego-backup-20260618.lpk", fileSize: 980000, createdAt: new Date(Date.now() - 86400000).toISOString(), encrypted: true, version: "1.0" },
+      ]);
+    case "restore_backup":
+      return Promise.resolve({
+        success: true,
+        mode: args?.mode || "full",
+        dbRestored: true,
+        imagesRestored: 5,
+        keyRestored: true,
+        message: "全量恢复成功",
+      });
+    case "delete_backup":
+      return Promise.resolve();
+    case "get_backup_config":
+      return Promise.resolve({ enabled: false, frequency: "daily", keepCount: 5, encrypt: false });
+    case "update_backup_config":
+      return Promise.resolve();
+    case "check_database_integrity":
+      return Promise.resolve({ ok: true, errors: [], canAutoRecover: false, latestBackup: null });
+    case "export_backup_to_path":
+      return Promise.resolve("C:\\backups\\lego-backup-20260619.lpk");
+    case "import_backup_from_path":
+      return Promise.resolve({
+        filename: "lego-backup-import.lpk",
+        fileSize: 500000,
+        createdAt: now,
+        encrypted: false,
+        version: "1.0",
+      });
+    case "should_auto_backup":
+      return Promise.resolve(false);
     default:
       return Promise.resolve({});
   }
@@ -534,5 +580,45 @@ export const api = {
 
   async getOperationLogs(filter?: OperationLogFilter): Promise<OperationLog[]> {
     return wrapInvoke("get_operation_logs", { filter });
+  },
+
+  async createBackup(password?: string): Promise<BackupInfo> {
+    return wrapInvoke("create_backup", { password: password || null });
+  },
+
+  async listBackups(): Promise<BackupInfo[]> {
+    return wrapInvoke("list_backups");
+  },
+
+  async restoreBackup(filename: string, password?: string, mode: "full" | "merge" = "full"): Promise<RestoreResult> {
+    return wrapInvoke("restore_backup", { filename, password: password || null, mode });
+  },
+
+  async deleteBackup(filename: string): Promise<void> {
+    return wrapInvoke("delete_backup", { filename });
+  },
+
+  async getBackupConfig(): Promise<BackupConfig> {
+    return wrapInvoke("get_backup_config");
+  },
+
+  async updateBackupConfig(config: BackupConfig): Promise<void> {
+    return wrapInvoke("update_backup_config", { config });
+  },
+
+  async checkDatabaseIntegrity(): Promise<IntegrityCheckResult> {
+    return wrapInvoke("check_database_integrity");
+  },
+
+  async exportBackupToPath(filename: string, destDir: string): Promise<string> {
+    return wrapInvoke("export_backup_to_path", { filename, destDir });
+  },
+
+  async importBackupFromPath(srcPath: string): Promise<BackupInfo> {
+    return wrapInvoke("import_backup_from_path", { srcPath });
+  },
+
+  async shouldAutoBackup(): Promise<boolean> {
+    return wrapInvoke("should_auto_backup");
   },
 };

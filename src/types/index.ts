@@ -203,3 +203,34 @@ export const OBJECT_TYPE_OPTIONS: { value: ObjectType; label: string }[] = [
   { value: "location", label: "存放位置" },
   { value: "moc_list", label: "MOC清单" },
 ];
+
+export interface BackupInfo {
+  filename: string;
+  fileSize: number;
+  createdAt: string;
+  encrypted: boolean;
+  version: string;
+}
+
+export interface BackupConfig {
+  enabled: boolean;
+  frequency: "daily" | "weekly";
+  keepCount: number;
+  encrypt: boolean;
+}
+
+export interface RestoreResult {
+  success: boolean;
+  mode: "full" | "merge";
+  dbRestored: boolean;
+  imagesRestored: number;
+  keyRestored: boolean;
+  message: string;
+}
+
+export interface IntegrityCheckResult {
+  ok: boolean;
+  errors: string[];
+  canAutoRecover: boolean;
+  latestBackup: BackupInfo | null;
+}

@@ -546,3 +546,64 @@ pub struct OperationLogFilter {
     pub object_id: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BackupInfo {
+    pub filename: String,
+    pub file_size: i64,
+    pub created_at: String,
+    pub encrypted: bool,
+    pub version: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BackupConfig {
+    pub enabled: bool,
+    pub frequency: String,
+    pub keep_count: i32,
+    pub encrypt: bool,
+}
+
+impl Default for BackupConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            frequency: "daily".to_string(),
+            keep_count: 5,
+            encrypt: false,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BackupManifest {
+    pub version: String,
+    pub created_at: String,
+    pub encrypted: bool,
+    pub db_size: i64,
+    pub image_count: i32,
+    pub app_version: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RestoreResult {
+    pub success: bool,
+    pub mode: String,
+    pub db_restored: bool,
+    pub images_restored: i32,
+    pub key_restored: bool,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IntegrityCheckResult {
+    pub ok: bool,
+    pub errors: Vec<String>,
+    pub can_auto_recover: bool,
+    pub latest_backup: Option<BackupInfo>,
+}
+

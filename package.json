@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "kill-port": "powershell -Command \"netstat -ano | Select-String ':2063' | ForEach-Object { $parts = $_ -split '\\s+'; $pid = $parts[-1]; if ($pid -match '^\\d+$') { taskkill /F /PID $pid 2>$null } }; exit 0\"",
+    "kill-port": "powershell -Command \"netstat -ano | Select-String ':2063' | ForEach-Object { $parts = $_ -split '\\s+'; $procId = $parts[-1]; if ($procId -match '^\\d+$') { taskkill /F /PID $procId 2>$null } }; exit 0\"",
     "dev": "npm run kill-port && vite",
     "build": "vue-tsc --noEmit && vite build",
     "preview": "vite preview",

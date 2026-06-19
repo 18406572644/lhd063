@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { ref, onMounted } from "vue";
-import { Refresh, Lock, InfoFilled, Coin, Warning, List, View } from "@element-plus/icons-vue";
+import { Refresh, Lock, InfoFilled, Coin, Warning, List, View, Download, Upload, Delete, CircleCheck, CircleClose } from "@element-plus/icons-vue";
 import { useAppStore } from "@/stores";
-import type { OperationLog, OperationLogFilter } from "@/types";
+import type { OperationLog, OperationLogFilter, BackupInfo, BackupConfig, IntegrityCheckResult } from "@/types";
 import { OPERATION_TYPE_OPTIONS, OBJECT_TYPE_OPTIONS } from "@/types";
 import { api } from "@/api";
 
@@ -28,6 +28,23 @@ const appInfo = ref({
   frontend: "Vue 3 + Element Plus",
   database: "SQLite + AES-256-GCM",
 });
+
+const backups = ref<BackupInfo[]>([]);
+const backupsLoading = ref(false);
+const backupConfig = ref<BackupConfig>({ enabled: false, frequency: "daily", keepCount: 5, encrypt: false });
+const createBackupLoading = ref(false);
+const backupPassword = ref("");
+const backupEncryptEnabled = ref(false);
+
+const restoreDialogVisible = ref(false);
+const restoreTarget = ref<BackupInfo | null>(null);
+const restoreMode = ref<"full" | "merge">("full");
+const restorePassword = ref("");
+const restoreLoading = ref(false);
+
+const integrityResult = ref<IntegrityCheckResult | null>(null);
+const integrityLoading = ref(false);
+const integrityDialogVisible = ref(false);
 
 async function handleChangeKey() {
   if (!oldKey.value) {
@@ -131,7 +148,149 @@ function formatSnapshot(snapshot?: string) {
   return JSON.stringify(data, null, 2);
 }
 
-onMounted(() => {
+function formatFileSize(bytes: number) {
+  if (bytes < 1024) return bytes + " B";
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
+  return (bytes / (1024 * 1024)).toFixed(1) + " MB";
+}
+
+async function loadBackups() {
+  backupsLoading.value = true;
+  try {
+    backups.value = await api.listBackups();
+  } finally {
+    backupsLoading.value = false;
+  }
+}
+
+async function loadBackupConfig() {
+  try {
+    backupConfig.value = await api.getBackupConfig();
+    backupEncryptEnabled.value = backupConfig.value.encrypt;
+  } catch {
+    // keep defaults
+  }
+}
+
+async function handleCreateBackup() {
+  createBackupLoading.value = true;
+  try {
+    const password = backupEncryptEnabled.value && backupPassword.value ? backupPassword.value : undefined;
+    const info = await api.createBackup(password);
+    appStore.showSuccess(`备份创建成功：${info.filename}`);
+    backupPassword.value = "";
+    await loadBackups();
+  } catch (e: any) {
+    appStore.showError(`备份创建失败：${e?.toString() || "未知错误"}`);
+  } finally {
+    createBackupLoading.value = false;
+  }
+}
+
+async function handleDeleteBackup(backup: BackupInfo) {
+  const confirmed = await appStore.showConfirm(
+    `确定要删除备份「${backup.filename}」吗？此操作不可恢复。`
+  );
+  if (!confirmed) return;
+  try {
+    await api.deleteBackup(backup.filename);
+    appStore.showSuccess("备份已删除");
+    await loadBackups();
+  } catch (e: any) {
+    appStore.showError(`删除失败：${e?.toString() || "未知错误"}`);
+  }
+}
+
+function openRestoreDialog(backup: BackupInfo) {
+  restoreTarget.value = backup;
+  restoreMode.value = "full";
+  restorePassword.value = "";
+  restoreDialogVisible.value = true;
+}
+
+async function handleRestore() {
+  if (!restoreTarget.value) return;
+
+  if (restoreMode.value === "full") {
+    const confirmed = await appStore.showConfirm(
+      "全量覆盖将替换当前所有数据（数据库、图片、密钥），此操作不可恢复！确定继续吗？"
+    );
+    if (!confirmed) return;
+  }
+
+  restoreLoading.value = true;
+  try {
+    const password = restoreTarget.value.encrypted && restorePassword.value ? restorePassword.value : undefined;
+    const result = await api.restoreBackup(
+      restoreTarget.value.filename,
+      password,
+      restoreMode.value
+    );
+    if (result.success) {
+      appStore.showSuccess(result.message);
+      restoreDialogVisible.value = false;
+    } else {
+      appStore.showError(result.message);
+    }
+  } catch (e: any) {
+    appStore.showError(`恢复失败：${e?.toString() || "未知错误"}`);
+  } finally {
+    restoreLoading.value = false;
+  }
+}
+
+async function handleBackupConfigChange() {
+  try {
+    const config: BackupConfig = {
+      ...backupConfig.value,
+      encrypt: backupEncryptEnabled.value,
+    };
+    await api.updateBackupConfig(config);
+    backupConfig.value = config;
+    appStore.showSuccess("备份配置已保存");
+  } catch (e: any) {
+    appStore.showError(`配置保存失败：${e?.toString() || "未知错误"}`);
+  }
+}
+
+async function handleCheckIntegrity() {
+  integrityLoading.value = true;
+  try {
+    integrityResult.value = await api.checkDatabaseIntegrity();
+    integrityDialogVisible.value = true;
+  } catch (e: any) {
+    appStore.showError(`完整性检查失败：${e?.toString() || "未知错误"}`);
+  } finally {
+    integrityLoading.value = false;
+  }
+}
+
+async function handleAutoRecover() {
+  if (!integrityResult.value?.latestBackup) return;
+  const confirmed = await appStore.showConfirm(
+    "将使用最近的备份进行全量恢复，当前数据将被覆盖。确定继续吗？"
+  );
+  if (!confirmed) return;
+
+  try {
+    const result = await api.restoreBackup(
+      integrityResult.value.latestBackup.filename,
+      undefined,
+      "full"
+    );
+    if (result.success) {
+      appStore.showSuccess("数据已从备份恢复");
+      integrityDialogVisible.value = false;
+    } else {
+      appStore.showError(result.message);
+    }
+  } catch (e: any) {
+    appStore.showError(`恢复失败：${e?.toString() || "未知错误"}`);
+  }
+}
+
+onMounted(async () => {
+  await Promise.all([loadBackups(), loadBackupConfig()]);
 });
 </script>
 
@@ -175,6 +334,118 @@ onMounted(() => {
                 <el-icon><Lock /></el-icon>
                 修改密钥
               </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="settings-section brick-card">
+        <div class="section-header">
+          <el-icon><Download :size="20" /></el-icon>
+          <h2>备份中心</h2>
+        </div>
+        <div class="section-body">
+          <div class="setting-item">
+            <div class="setting-info">
+              <h3>手动备份</h3>
+              <p>一键导出完整备份包（lego-backup-YYYYMMDD.lpk），包含数据库 + 图片目录 + 密钥</p>
+            </div>
+            <div class="setting-action backup-action-row">
+              <label class="backup-encrypt-toggle">
+                <el-switch v-model="backupEncryptEnabled" active-text="加密" inactive-text="" size="small" />
+              </label>
+              <el-input
+                v-if="backupEncryptEnabled"
+                v-model="backupPassword"
+                type="password"
+                placeholder="设置密码"
+                show-password
+                size="small"
+                style="width: 140px"
+              />
+              <button
+                class="brick-btn brick-btn-sm"
+                :disabled="createBackupLoading || (backupEncryptEnabled && !backupPassword)"
+                @click="handleCreateBackup"
+              >
+                <el-icon><Download /></el-icon>
+                {{ createBackupLoading ? "备份中..." : "立即备份" }}
+              </button>
+            </div>
+          </div>
+
+          <div class="setting-item">
+            <div class="setting-info">
+              <h3>自动备份</h3>
+              <p>按计划自动创建备份，保留最近 N 个版本</p>
+            </div>
+            <div class="setting-action">
+              <el-switch v-model="backupConfig.enabled" size="small" @change="handleBackupConfigChange" />
+            </div>
+          </div>
+
+          <div v-if="backupConfig.enabled" class="backup-config-row">
+            <div class="config-field">
+              <span class="config-label">频率</span>
+              <el-select v-model="backupConfig.frequency" size="small" style="width: 120px" @change="handleBackupConfigChange">
+                <el-option label="每日" value="daily" />
+                <el-option label="每周" value="weekly" />
+              </el-select>
+            </div>
+            <div class="config-field">
+              <span class="config-label">保留数量</span>
+              <el-input-number v-model="backupConfig.keepCount" :min="1" :max="30" size="small" style="width: 110px" @change="handleBackupConfigChange" />
+            </div>
+            <div class="config-field">
+              <span class="config-label">自动加密</span>
+              <el-switch v-model="backupEncryptEnabled" size="small" @change="handleBackupConfigChange" />
+            </div>
+          </div>
+
+          <div class="setting-item">
+            <div class="setting-info">
+              <h3>异常检测</h3>
+              <p>校验数据库完整性，发现损坏自动提示从最近备份恢复</p>
+            </div>
+            <div class="setting-action">
+              <button
+                class="brick-btn brick-btn-sm brick-btn-secondary"
+                :loading="integrityLoading"
+                @click="handleCheckIntegrity"
+              >
+                <el-icon><CircleCheck /></el-icon>
+                完整性检查
+              </button>
+            </div>
+          </div>
+
+          <div class="backups-list" v-loading="backupsLoading">
+            <div v-if="backups.length === 0" class="empty-backups">
+              <p>暂无备份</p>
+            </div>
+            <div v-for="backup in backups" :key="backup.filename" class="backup-item">
+              <div class="backup-info">
+                <div class="backup-name">
+                  <el-icon><Download :size="14" /></el-icon>
+                  <span class="backup-filename">{{ backup.filename }}</span>
+                  <el-tag v-if="backup.encrypted" type="warning" effect="dark" size="small">加密</el-tag>
+                </div>
+                <div class="backup-meta">
+                  <span>{{ formatDate(backup.createdAt) }}</span>
+                  <span>{{ formatFileSize(backup.fileSize) }}</span>
+                  <span>v{{ backup.version }}</span>
+                </div>
+              </div>
+              <div class="backup-actions">
+                <button class="brick-btn brick-btn-sm" @click="openRestoreDialog(backup)">
+                  <el-icon><Upload /></el-icon>
+                  恢复
+                </button>
+                <button class="brick-btn brick-btn-sm brick-btn-secondary" @click="handleDeleteBackup(backup)">
+                  <el-icon><Delete /></el-icon>
+                  删除
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -319,6 +590,105 @@ onMounted(() => {
         </button>
         <button class="brick-btn" @click="handleChangeKey">
           确认修改
+        </button>
+      </template>
+    </el-dialog>
+
+    <el-dialog
+      v-model="restoreDialogVisible"
+      title="备份恢复"
+      width="520px"
+      :close-on-click-modal="false"
+    >
+      <div v-if="restoreTarget" class="restore-dialog-content">
+        <div class="restore-target-info">
+          <p><strong>备份文件：</strong>{{ restoreTarget.filename }}</p>
+          <p><strong>创建时间：</strong>{{ formatDate(restoreTarget.createdAt) }}</p>
+          <p><strong>文件大小：</strong>{{ formatFileSize(restoreTarget.fileSize) }}</p>
+          <p v-if="restoreTarget.encrypted"><el-tag type="warning" effect="dark" size="small">加密备份</el-tag></p>
+        </div>
+
+        <el-form label-width="100px" style="margin-top: 16px">
+          <el-form-item label="恢复模式">
+            <el-radio-group v-model="restoreMode">
+              <el-radio value="full">全量覆盖</el-radio>
+              <el-radio value="merge">合并增量</el-radio>
+            </el-radio-group>
+          </el-form-item>
+
+          <el-form-item v-if="restoreTarget.encrypted" label="解密密码">
+            <el-input
+              v-model="restorePassword"
+              type="password"
+              placeholder="请输入备份密码"
+              show-password
+            />
+          </el-form-item>
+        </el-form>
+
+        <div class="warning-text">
+          <el-icon><Warning /></el-icon>
+          <span v-if="restoreMode === 'full'">全量覆盖将替换当前所有数据（数据库 + 图片 + 密钥），此操作不可恢复！</span>
+          <span v-else>合并增量仅恢复不存在的图片文件，数据库保持不变。</span>
+        </div>
+      </div>
+
+      <template #footer>
+        <button
+          class="brick-btn brick-btn-secondary"
+          @click="restoreDialogVisible = false"
+        >
+          取消
+        </button>
+        <button
+          class="brick-btn"
+          :disabled="restoreTarget?.encrypted && !restorePassword"
+          :loading="restoreLoading"
+          @click="handleRestore"
+        >
+          确认恢复
+        </button>
+      </template>
+    </el-dialog>
+
+    <el-dialog
+      v-model="integrityDialogVisible"
+      title="数据库完整性检查"
+      width="560px"
+    >
+      <div v-if="integrityResult" class="integrity-dialog-content">
+        <div v-if="integrityResult.ok" class="integrity-ok">
+          <el-icon :size="48" color="#4CAF50"><CircleCheck /></el-icon>
+          <p>数据库完整性检查通过，未发现异常</p>
+        </div>
+        <div v-else class="integrity-fail">
+          <el-icon :size="48" color="#F44336"><CircleClose /></el-icon>
+          <p class="fail-title">数据库完整性检查失败</p>
+          <div class="error-list">
+            <div v-for="(err, idx) in integrityResult.errors" :key="idx" class="error-item">
+              {{ err }}
+            </div>
+          </div>
+          <div v-if="integrityResult.canAutoRecover && integrityResult.latestBackup" class="recover-section">
+            <div class="warning-text">
+              <el-icon><Warning /></el-icon>
+              检测到可用的备份，可以从最近备份自动恢复
+            </div>
+            <div class="recover-backup-info">
+              <p><strong>备份文件：</strong>{{ integrityResult.latestBackup.filename }}</p>
+              <p><strong>创建时间：</strong>{{ formatDate(integrityResult.latestBackup.createdAt) }}</p>
+            </div>
+            <button class="brick-btn" @click="handleAutoRecover">
+              <el-icon><Upload /></el-icon>
+              从此备份恢复
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <template #footer>
+        <button class="brick-btn brick-btn-secondary" @click="integrityDialogVisible = false">
+          关闭
         </button>
       </template>
     </el-dialog>
@@ -630,6 +1000,176 @@ onMounted(() => {
   margin-top: $spacing-md;
 }
 
+.backup-action-row {
+  display: flex;
+  align-items: center;
+  gap: $spacing-sm;
+}
+
+.backup-encrypt-toggle {
+  display: flex;
+  align-items: center;
+  gap: $spacing-xs;
+  font-size: $font-size-sm;
+  color: $color-gray-light;
+}
+
+.backup-config-row {
+  display: flex;
+  gap: $spacing-lg;
+  padding: $spacing-md $spacing-md $spacing-lg;
+  background: $color-dark;
+  border-radius: $brick-radius;
+  margin-bottom: $spacing-md;
+  border: 1px solid $color-dark-border;
+
+  .config-field {
+    display: flex;
+    flex-direction: column;
+    gap: $spacing-xs;
+  }
+
+  .config-label {
+    font-size: $font-size-sm;
+    color: $color-gray-dark;
+  }
+}
+
+.backups-list {
+  margin-top: $spacing-md;
+  min-height: 60px;
+}
+
+.empty-backups {
+  text-align: center;
+  padding: $spacing-xl;
+  color: $color-gray-dark;
+  font-size: $font-size-sm;
+}
+
+.backup-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: $spacing-md;
+  border: 1px solid $color-dark-border;
+  border-radius: $brick-radius;
+  margin-bottom: $spacing-sm;
+  background: $color-dark;
+
+  &:last-child {
+    margin-bottom: 0;
+  }
+}
+
+.backup-info {
+  flex: 1;
+}
+
+.backup-name {
+  display: flex;
+  align-items: center;
+  gap: $spacing-sm;
+  margin-bottom: $spacing-xs;
+}
+
+.backup-filename {
+  font-size: $font-size-base;
+  color: $color-white;
+  font-weight: 500;
+}
+
+.backup-meta {
+  display: flex;
+  gap: $spacing-md;
+  font-size: $font-size-sm;
+  color: $color-gray-dark;
+}
+
+.backup-actions {
+  display: flex;
+  gap: $spacing-xs;
+  flex-shrink: 0;
+}
+
+.restore-dialog-content {
+  .restore-target-info {
+    padding: $spacing-md;
+    background: $color-dark;
+    border-radius: $brick-radius;
+    border: 1px solid $color-dark-border;
+
+    p {
+      margin: $spacing-xs 0;
+      font-size: $font-size-sm;
+      color: $color-gray-light;
+
+      strong {
+        color: $color-white;
+      }
+    }
+  }
+}
+
+.integrity-dialog-content {
+  text-align: center;
+}
+
+.integrity-ok {
+  p {
+    color: $color-success;
+    font-size: $font-size-lg;
+    font-weight: 500;
+    margin-top: $spacing-md;
+  }
+}
+
+.integrity-fail {
+  .fail-title {
+    color: $color-danger;
+    font-size: $font-size-lg;
+    font-weight: 500;
+    margin-top: $spacing-md;
+  }
+}
+
+.error-list {
+  text-align: left;
+  margin: $spacing-md 0;
+}
+
+.error-item {
+  padding: $spacing-xs $spacing-md;
+  background: rgba(244, 67, 54, 0.1);
+  border-radius: $brick-radius;
+  margin-bottom: $spacing-xs;
+  font-size: $font-size-sm;
+  color: $color-danger;
+}
+
+.recover-section {
+  text-align: left;
+  margin-top: $spacing-lg;
+
+  .recover-backup-info {
+    padding: $spacing-md;
+    background: $color-dark;
+    border-radius: $brick-radius;
+    border: 1px solid $color-dark-border;
+    margin-bottom: $spacing-md;
+
+    p {
+      margin: $spacing-xs 0;
+      font-size: $font-size-sm;
+      color: $color-gray-light;
+
+      strong {
+        color: $color-white;
+      }
+    }
+  }
+}
+
 .logs-filter {
   display: flex;
   gap: $spacing-sm;
@@ -684,5 +1224,14 @@ onMounted(() => {
   --el-descriptions-item-content-bg: $color-dark;
   --el-text-color-primary: $color-white;
   --el-text-color-regular: $color-gray-light;
+}
+
+:deep(.el-radio) {
+  color: $color-gray-light;
+}
+
+:deep(.el-radio__input.is-checked .el-radio__inner) {
+  border-color: $color-primary;
+  background: $color-primary;
 }
 </style>

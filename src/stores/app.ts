@@ -86,12 +86,39 @@ export const useAppStore = defineStore("app", () => {
 
       encryptionKey.value = await api.getEncryptionKey();
       initialized.value = true;
+
+      checkIntegrityOnStartup();
+      performAutoBackupIfNeeded();
     } catch (error) {
       console.error("初始化失败:", error);
       initError.value = true;
       showError("应用初始化失败，请点击重试");
     } finally {
       stopLoading();
+    }
+  }
+
+  async function checkIntegrityOnStartup() {
+    try {
+      const result = await api.checkDatabaseIntegrity();
+      if (!result.ok) {
+        showWarning("数据库完整性异常，请在设置中进行完整性检查并恢复备份");
+      }
+    } catch {
+      // silently ignore
+    }
+  }
+
+  async function performAutoBackupIfNeeded() {
+    try {
+      const needed = await api.shouldAutoBackup();
+      if (needed) {
+        const config = await api.getBackupConfig();
+        const password = config.encrypt ? undefined : undefined;
+        await api.createBackup(password);
+      }
+    } catch {
+      // silently ignore
     }
   }
 

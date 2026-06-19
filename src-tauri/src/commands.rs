@@ -2,6 +2,7 @@ use tauri::State;
 
 use crate::database::Database;
 use crate::models::*;
+use crate::backup::BackupService;
 
 #[tauri::command]
 pub async fn init_database(
@@ -313,4 +314,87 @@ pub async fn get_operation_logs(
     filter: Option<OperationLogFilter>,
 ) -> Result<Vec<OperationLog>, String> {
     db.get_operation_logs(filter)
+}
+
+#[tauri::command]
+pub async fn create_backup(
+    db: State<'_, Database>,
+    app: tauri::AppHandle,
+    password: Option<String>,
+) -> Result<BackupInfo, String> {
+    BackupService::create_backup(&db, &app, password)
+}
+
+#[tauri::command]
+pub async fn list_backups(
+    app: tauri::AppHandle,
+) -> Result<Vec<BackupInfo>, String> {
+    BackupService::list_backups(&app)
+}
+
+#[tauri::command]
+pub async fn restore_backup(
+    db: State<'_, Database>,
+    app: tauri::AppHandle,
+    filename: String,
+    password: Option<String>,
+    mode: String,
+) -> Result<RestoreResult, String> {
+    BackupService::restore_backup(&db, &app, filename, password, mode)
+}
+
+#[tauri::command]
+pub async fn delete_backup(
+    app: tauri::AppHandle,
+    filename: String,
+) -> Result<(), String> {
+    BackupService::delete_backup(&app, filename)
+}
+
+#[tauri::command]
+pub async fn get_backup_config(
+    app: tauri::AppHandle,
+) -> Result<BackupConfig, String> {
+    BackupService::get_backup_config(&app)
+}
+
+#[tauri::command]
+pub async fn update_backup_config(
+    app: tauri::AppHandle,
+    config: BackupConfig,
+) -> Result<(), String> {
+    BackupService::update_backup_config(&app, config)
+}
+
+#[tauri::command]
+pub async fn check_database_integrity(
+    db: State<'_, Database>,
+    app: tauri::AppHandle,
+) -> Result<IntegrityCheckResult, String> {
+    BackupService::check_database_integrity(&db, &app)
+}
+
+#[tauri::command]
+pub async fn export_backup_to_path(
+    db: State<'_, Database>,
+    app: tauri::AppHandle,
+    filename: String,
+    dest_dir: String,
+) -> Result<String, String> {
+    BackupService::export_backup_to_path(&db, &app, filename, dest_dir)
+}
+
+#[tauri::command]
+pub async fn import_backup_from_path(
+    app: tauri::AppHandle,
+    src_path: String,
+) -> Result<BackupInfo, String> {
+    BackupService::import_backup_from_path(&app, src_path)
+}
+
+#[tauri::command]
+pub async fn should_auto_backup(
+    app: tauri::AppHandle,
+) -> Result<bool, String> {
+    BackupService::should_auto_backup(&app)
 }
